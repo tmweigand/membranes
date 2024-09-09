@@ -11,7 +11,8 @@ def my_function(id):
     size = comm.Get_size()
     rank = comm.Get_rank()
 
-    directory = './data/sample_bridges_data/*'
+    directory = '../data/test_data/*'
+    print(directory)
     directory_status_file = 'process/director_process_status.txt'
 
     process_completed_file = "process/process_" + id + "_.txt"
