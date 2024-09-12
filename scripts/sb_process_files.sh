@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #checks if initialize_files.py has already been ran once before
-if [ -f "../processor/director_processor_status.txt" ]; then
+if [ -f "../process/director_process_status.txt" ]; then
     echo "Initialization already complete."
 else
     python initialize_files.py

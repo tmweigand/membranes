@@ -13,7 +13,7 @@ def my_function(id):
 
     directory = '../data/test_data/*'
     print(directory)
-    directory_status_file = 'process/director_process_status.txt'
+    directory_status_file = 'process/directory_process_status.txt'
 
     process_completed_file = "process/process_" + id + "_.txt"
     out_process = open(process_completed_file, 'w+', encoding="utf-8")
