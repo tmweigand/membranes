@@ -4,7 +4,7 @@ import parallel_process_files
 def my_function():
 
     directory = '../data/test_data/*'
-    directory_status_file = './process/director_process_status.txt'
+    directory_status_file = './process/directory_process_status.txt'
     fd = parallel_process_files.FileDirectory(directory,directory_status_file)
     fd.initialize_list()
     
