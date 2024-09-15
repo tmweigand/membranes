@@ -1,5 +1,5 @@
-import glob
 import sys
+import glob
 import random
 from time import sleep
 from mpi4py import MPI
