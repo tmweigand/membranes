@@ -2,6 +2,7 @@ import glob
 import os
 import sys
 import time
+import csv 
 
 def data_string(file,status,job_id):
     """
@@ -59,11 +60,30 @@ class FileDirectory:
             out_file.write(data_string(file,0,0))
     
         out_file.close()
+    
+    def read_process(self, file_path):
+        """
+        Read process file to create list of files for checking that specific batch
+        """
+        unique_jobIDs = set()
+        with open(file_path, 'r', encoding='utf-8') as f:
+            reader = csv.reader(f, delimeter='\t')
+            #Skip first row, only has total number of entries in txt file
+            next(reader)
+
+            for row in reader:
+                #Takes the last value in each row and adds it to unique_jobIDs if unique
+                last_column_ID = row[-1].strip()
+                unique_jobIDs.add(last_column_ID)
+
+        return list(unique_jobIDs)
 
     def check_progress(self):
         """
         Ensure that all files have been processed
         """
+        #Need to include sys arguement so that it reads the correct director process status
+        unique_IDs = 
         files = glob.glob('./process/*')
         files.remove(self.directory_file)
         main_counts = self.process_main(self.directory_file)
