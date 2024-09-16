@@ -9,7 +9,7 @@ def my_function(flag=None):
     else:
         directory_status_file = f'./process/directory_process_status.{flag}.txt'
     df = parallel_process_files.FileDirectory(directory,directory_status_file)
-    df.check_progress()
+    df.check_progress(flag)
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

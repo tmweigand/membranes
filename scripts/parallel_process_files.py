@@ -67,25 +67,34 @@ class FileDirectory:
         """
         unique_jobIDs = set()
         with open(file_path, 'r', encoding='utf-8') as f:
-            reader = csv.reader(f, delimeter='\t')
+            reader = csv.reader(f, delimiter='\t')
             #Skip first row, only has total number of entries in txt file
             next(reader)
 
             for row in reader:
-                #Takes the last value in each row and adds it to unique_jobIDs if unique
-                last_column_ID = row[-1].strip()
-                unique_jobIDs.add(last_column_ID)
-
+                #filters out trailing tabs white spacd in directory_process_status files
+                filtered_row = [col.strip() for col in row if col.strip()]
+                if filtered_row:
+                    last_column_ID = filtered_row[-1]
+                    unique_jobIDs.add(last_column_ID)
         return list(unique_jobIDs)
 
-    def check_progress(self):
+    def check_progress(self, flag):
         """
         Ensure that all files have been processed
         """
         #Need to include sys arguement so that it reads the correct director process status
-        unique_IDs = 
-        files = glob.glob('./process/*')
-        files.remove(self.directory_file)
+        unique_IDs = self.read_process(f'./process/directory_process_status.{flag}.txt')
+        print(unique_IDs)
+        files = []
+        for job_id in unique_IDs:
+            matching_files = glob.glob(f'./process/process_{job_id}_.txt')
+            files.extend(matching_files)
+        print(f"Matching files: {files}")
+        
+        if self.directory_file in files:
+            files.remove(self.directory_file)
+            
         main_counts = self.process_main(self.directory_file)
         main_data = self.gen_stats(self.directory_file,main = True)
 
