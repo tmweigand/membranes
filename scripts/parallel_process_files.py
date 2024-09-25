@@ -60,41 +60,14 @@ class FileDirectory:
             out_file.write(data_string(file,0,0))
     
         out_file.close()
-    
-    def read_process(self, file_path):
-        """
-        Read process file to create list of files for checking that specific batch
-        """
-        unique_jobIDs = set()
-        with open(file_path, 'r', encoding='utf-8') as f:
-            reader = csv.reader(f, delimiter='\t')
-            #Skip first row, only has total number of entries in txt file
-            next(reader)
 
-            for row in reader:
-                #filters out trailing tabs white spacd in directory_process_status files
-                filtered_row = [col.strip() for col in row if col.strip()]
-                if filtered_row:
-                    last_column_ID = filtered_row[-1]
-                    unique_jobIDs.add(last_column_ID)
-        return list(unique_jobIDs)
-
-    def check_progress(self, flag):
+    def check_progress(self, job_name):
         """
         Ensure that all files have been processed
         """
-        #Need to include sys arguement so that it reads the correct director process status
-        unique_IDs = self.read_process(f'./process/directory_process_status.{flag}.txt')
-        print(unique_IDs)
-        files = []
-        for job_id in unique_IDs:
-            matching_files = glob.glob(f'./process/process_{job_id}_.txt')
-            files.extend(matching_files)
-        print(f"Matching files: {files}")
-        
-        if self.directory_file in files:
-            files.remove(self.directory_file)
-            
+        path = f'./{job_name}/process/*'
+        files = glob.glob(path)
+        files.remove(self.directory_file)
         main_counts = self.process_main(self.directory_file)
         main_data = self.gen_stats(self.directory_file,main = True)
 
