@@ -1,0 +1,31 @@
+this is a molecule template for: hydroxide monomer
+
+2 atoms
+1 bonds
+0 angles
+0 dihedrals
+0 impropers
+
+Types
+
+1 11
+2 13
+
+
+Charges
+
+1 -0.53510000
+2 0.43150000
+
+
+Coords
+
+1 0.000   0.000   0.000
+2 0.450  -0.153  -0.845
+
+
+Bonds
+
+    1 15 1 2 
+
+
