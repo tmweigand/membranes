@@ -60,11 +60,12 @@ class FileDirectory:
     
         out_file.close()
 
-    def check_progress(self):
+    def check_progress(self, job_name):
         """
         Ensure that all files have been processed
         """
-        files = glob.glob('./process/*')
+        path = f'./{job_name}/process/*'
+        files = glob.glob(path)
         files.remove(self.directory_file)
         main_counts = self.process_main(self.directory_file)
         main_data = self.gen_stats(self.directory_file,main = True)
