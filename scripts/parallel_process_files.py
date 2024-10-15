@@ -2,7 +2,6 @@ import glob
 import os
 import sys
 import time
-import csv 
 
 def data_string(file,status,job_id):
     """
