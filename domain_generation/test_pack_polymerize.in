@@ -1,7 +1,7 @@
 # Polymerization script for TMC carbon to MPD nitrogen 
 # Usage: Ensure call to LAMMPS is made from folder where data.lmps is saved, assume that reaction scripts are contained in ../../scripts from folder where data.lmps is saved.
 
-# read_restart ../restarts/polym.restart.750000
+# read_restart ../restarts/polym/restart.750000.lmp
 # System
 units            real
 atom_style       full
@@ -63,7 +63,7 @@ minimize         1.0e-5 1.0e-5 10000 100000
 min_style        cg
 min_modify       line quadratic
 minimize         1.0e-8 1.0e-8 10000 100000
-write_data data80.lmps
+write_data data.lmps
 
 timestep 1.0
 
@@ -104,7 +104,7 @@ unfix 1
 unfix 4
 reset_atom_ids
 if "${PAbonds_made} >= ${TARGET_BONDS}" then "jump SELF break"
-variable b  equal ${a}
+variable b equal ${a}
 next a
 
 jump SELF loop
@@ -118,10 +118,10 @@ unfix PArxn
 
 velocity all scale 300.0
 fix 1 all nvt temp 300 300 $(100.0*dt)
-variable final_steps equal 800000-$(step) #aj changed from 750000
+variable final_steps equal 1000000-$(step) #aj changed from 750000
 print "==================================PA EQUILIBRATION RUN NUMBER OF STEPS = ${final_steps}================="
 thermo_style custom step temp press density
-run 800000 upto #changed from 750000
+run 1000000 upto #changed from 750000
 unfix 1
 
 
@@ -147,13 +147,13 @@ molecule OH ../domain_in/hydroxide.mol
 
 create_atoms 0 random ${NUM_OH} 43770 bawks mol OH 54383 
 minimize         1.0e-4 1.0e-4 1000 100000
-write_data logs/term_data_80.lmps
+write_data logs/term_data.lmps
 
 
 molecule mol3 ../domain_in/TMC_OH_prerxn.mol
 molecule mol4 ../domain_in/TMC_OH_postrxn.mol
 fix OHrxn all bond/react stabilization yes statted_grp .03 &
-  react rxn1 all ${BONDFREQ} 0.0 5.0 mol3 mol4 TMCOH_rxnmap.in
+  react rxn1 all ${BONDFREQ} 0.0 5.0 mol3 mol4 ../domain_in/TMCOH_rxnmap.in
 group Cls type 18
 variable OPEN_C equal count(Cls)
 variable OHBONDS_NEEDED equal ${OPEN_C}
@@ -178,6 +178,7 @@ run 1000
 unfix 1
 unfix 4
 reset_atom_ids
+print "Checking bonds: Current = ${OHbonds_made}, Needed = ${OHBONDS_NEEDED}"
 if "${OHbonds_made} >= ${OHBONDS_NEEDED}" then "jump SELF break2"
 variable d equal ${c}
 next c
@@ -192,7 +193,7 @@ variable final_steps2 equal 750000
 fix 1 all nvt temp 300 300 $(100.0*dt)
 print "==================================PA EQUILIBRATION RUN NUMBER OF STEPS = ${final_steps2}================="
 thermo_style custom step temp press density
-run 1500000 upto #aj changed from 1500000
+run 1750000 upto #aj changed from 1500000
 unfix 1
 
 
@@ -201,4 +202,3 @@ delete_atoms group EXCESSOHCL bond yes
 # Data file output
 reset_atom_ids
 write_data       logs/term_final.lmps
-
