@@ -7,6 +7,7 @@
 #SBATCH --time=12:00:00
 #SBATCH --partition=RM
 
-module load intelmpi/2021.3.0-intel2021.3.0 gcc/10.2.0 cuda/11.7.1 LAMMPS/23Jun22-intel
+module load openmpi/4.1.1-gcc8.3.1
 
-mpirun -np 128 lmp -in test_pack_polymerize.in -var mult 1 -var rand 1 -var xlink 0.93
+pwd
+mpirun -np 128 /jet/home/ajotcham/lammps-29Aug2024/build/lmp -in test_pack_polymerize.in -var mult 1 -var rand 1 -var xlink 0.93
