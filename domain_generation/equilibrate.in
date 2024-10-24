@@ -1,4 +1,5 @@
 # General
+log logs/log.EQ
 units            real
 atom_style       full
 dimension        3
