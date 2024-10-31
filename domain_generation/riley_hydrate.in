@@ -172,6 +172,13 @@ fix PERMFORCE HIzwall addforce  0.0 0.0 v_neg_HYDRATE_FORCE
 fix FEEDPISTON LOzwall rigid single torque * off off off force * off off on 
 fix PERMPISTON HIzwall rigid single torque * off off off force * off off on 
 
+unfix PINFORCE  
+unfix balance1
+unfix zwalls1
+# unfix FEEDFORCE
+# unfix PERMFORCE
+# unfix FEEDPISTON
+# unfix PERMPISTON
 # Collect sufficient data for morphological analysis
 compute        peratomstressvol WATER stress/atom NULL 
 compute	       peratomstressvolke WATER stress/atom NULL ke 
@@ -186,20 +193,20 @@ dump systemdata all custom/gz 100000 logs/systemdata.*.gz id mol type mass q x y
 dump_modify systemdata sort 1
 
 # Run hydration experiment
-# reset_atoms id
-# write_data test.lmps
-# restart 1000000 hydr/restarts/restart.*
-# neigh_modify exclude type 17 17
-# fix FXSHAKE mobile shake 0.0001 20 0 a 4 9 10 12 19 21 22 25 b 2 9 10 15 16 17 t 5 8 13 14 15
-# fix FXSHAKE mobile shake 0.0001 10 0 b 17 a 22 t 5 8 14
-# fix 1 mobile nvt temp 300 300 200
-# thermo 1000
-# timestep 1.0
-# write_restart restarts/hydr/hydr_pre.restart
-# run 3000000
-# write_restart restarts/hydr/hydr_init.restart
-# timestep 2.0
-# run 25000000
-# unfix 1 
-# write_data hydrated_data.lmps
+reset_atoms id
+write_data test.lmps
+restart 1000000 hydr/restarts/restart.*
+neigh_modify exclude type 17 17
+fix FXSHAKE mobile shake 0.0001 20 0 a 4 9 10 12 19 21 22 25 b 2 9 10 15 16 17 t 5 8 13 14 15
+fix FXSHAKE mobile shake 0.0001 10 0 b 17 a 22 t 5 8 14
+fix 1 mobile nvt temp 300 300 200
+thermo 1000
+timestep 1.0
+write_restart restarts/hydr/hydr_pre.restart
+run 3000000
+write_restart restarts/hydr/hydr_init.restart
+timestep 2.0
+run 25000000
+unfix 1 
+write_data hydrated_data.lmps
 
