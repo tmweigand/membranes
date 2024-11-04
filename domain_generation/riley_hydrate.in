@@ -155,7 +155,7 @@ group mobile subtract all zwalls
 change_box all z delta $(-200*v_mult1d) $(200*v_mult1d) units box
 
 #Pressurize system with pistons
-fix balance1 all balance 0 1.0 shift z 10 1.1
+# fix balance1 all balance 0 1.0 shift z 10 1.1
 fix zwalls1 all wall/lj126 zlo $(zlo) 0.06844 3.40700 9 zhi $(zhi) 0.06844 3.40700 9
 fix_modify zwalls1 energy yes
 
@@ -169,16 +169,11 @@ variable neg_HYDRATE_FORCE equal -${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_
 fix FEEDFORCE LOzwall addforce  0.0 0.0 v_pos_HYDRATE_FORCE
 fix PERMFORCE HIzwall addforce  0.0 0.0 v_neg_HYDRATE_FORCE
 
-fix FEEDPISTON LOzwall rigid single torque * off off off force * off off on 
-fix PERMPISTON HIzwall rigid single torque * off off off force * off off on 
+# fix FEEDPISTON LOzwall rigid single torque * off off off force * off off on 
+# fix PERMPISTON HIzwall rigid single torque * off off off force * off off on 
 
-unfix PINFORCE  
-unfix balance1
-unfix zwalls1
-# unfix FEEDFORCE
-# unfix PERMFORCE
-# unfix FEEDPISTON
-# unfix PERMPISTON
+fix PERMPISTON zwalls rigid single torque * off off off force * off off on 
+
 # Collect sufficient data for morphological analysis
 compute        peratomstressvol WATER stress/atom NULL 
 compute	       peratomstressvolke WATER stress/atom NULL ke 
@@ -199,6 +194,7 @@ restart 1000000 hydr/restarts/restart.*
 neigh_modify exclude type 17 17
 fix FXSHAKE mobile shake 0.0001 20 0 a 4 9 10 12 19 21 22 25 b 2 9 10 15 16 17 t 5 8 13 14 15
 fix FXSHAKE mobile shake 0.0001 10 0 b 17 a 22 t 5 8 14
+fix balance1 all balance 0 1.0 shift z 10 1.1
 fix 1 mobile nvt temp 300 300 200
 thermo 1000
 timestep 1.0
@@ -208,5 +204,6 @@ write_restart restarts/hydr/hydr_init.restart
 timestep 2.0
 run 25000000
 unfix 1 
+unfix balance1
 write_data hydrated_data.lmps
 
