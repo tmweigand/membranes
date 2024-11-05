@@ -8,6 +8,8 @@
 #SBATCH --partition=RM
 
 module load openmpi/4.1.1-gcc8.3.1
+mkdir logs
+mkdir restarts_polym
 
 pwd
-mpirun -np 128 /jet/home/ajotcham/lammps-29Aug2024/build/lmp -in test_pack_polymerize.in -var mult 1 -var rand 1 -var xlink 0.93
+mpirun -np 128 /jet/home/ajotcham/lammps-29Aug2024/build/lmp -in  ../../domain_generation/pack_polymerize.in -var mult 1 -var rand 1 -var xlink 0.93
