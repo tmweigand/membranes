@@ -101,7 +101,7 @@ region FEED block INF INF INF INF $(zlo+10*v_mult1d) $(zlo+v_z_delta-10*v_mult1d
 region PERM block INF INF INF INF $(zhi-v_z_delta+10*v_mult1d) $(zhi-10*v_mult1d) units box
 
 # Add water molecules to feed and permeate regions, minimize to move overlapping molecules
-molecule mol1 ../domain_in/tip3p.mol
+molecule mol1 ../../domain_in/tip3p.mol
 create_atoms 0 region FEED subset ${NUM_H20} $(521*v_mult*v_rand) mol mol1 $(322*v_mult*v_rand)
 create_atoms 0 region PERM subset ${NUM_H20} $(512*v_mult*v_rand) mol mol1 $(632*v_mult*v_rand)
 
