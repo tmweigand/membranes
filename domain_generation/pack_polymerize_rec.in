@@ -46,8 +46,8 @@ create_atoms 0 box subset ${NUMMPD} $(25523*v_rand) mol MPDmol 212123
 group MPDs union all
 undump 1
 
-label packloop
 dump 2 all custom 1000 logs/packing_structure.lammpstrj id type x y z vx vy vz
+label packloop
 variable p loop 1000
 variable NUMTMC equal (${NUMATOMS}-$(atoms))/18
 create_atoms 0 box subset ${NUMTMC} $(525621*v_p*v_rand) mol TMCmol 325132
@@ -100,9 +100,9 @@ thermo_style custom step temp press density f_PArxn[1]
 variable PAbonds_made equal f_PArxn[1]
 
 
-#restart 10000 restarts_polym/polym.restart 
+#restart 10000 restarts_polym/polym.restart
+dump 3 all custom ${BONDFREQ} logs/polymerization_structure.lammpstrj id type x y z vx vy vz 
 label loop
-dump 3 all custom ${BONDFREQ} logs/polymerization_structure.lammpstrj id type x y z vx vy vz
 variable a loop 375
 #if "${a} > 3" then "restart 10000 restarts_polym/polym.restart" 
 print "==================================Current bonds formed = ${PAbonds_made} Minimum bonds desired = ${TARGET_BONDS}======================================="
@@ -176,8 +176,8 @@ variable OHBONDS_NEEDED equal ${OPEN_C}
 variable OHbonds_made equal f_OHrxn[1]
 thermo_style custom step temp press density f_OHrxn[1]
 
-label loop2
 dump 4 all custom 10000 logs/OH_structure.lammpstrj id type x y z vx vy vz
+label loop2
 variable c loop 375
 print "==================================Current bonds formed = ${OHbonds_made}======================================="
 print "==================================NVT OH POLYMERIZATION RUN: 300 C==============================="
