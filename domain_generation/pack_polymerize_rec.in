@@ -23,7 +23,7 @@ dihedral_style   charmm
 improper_style   harmonic
 special_bonds    charmm
 
-dump 1 all custom 1000 logs/initial_structure.lammpstrj id type x y z vx vy vz
+
 
 # Data file input
 #Sets up domain size and number of atoms
@@ -44,9 +44,10 @@ molecule TMCmol ../../domain_in/TMC.mol
 region WHOLEBOX block $(xlo+10) $(xhi-5) $(ylo+10) $(yhi-5) $(zlo+10) $(zhi-5) units box side in
 create_atoms 0 box subset ${NUMMPD} $(25523*v_rand) mol MPDmol 212123
 group MPDs union all
+dump 1 all custom 1000 logs/initial_structure.lammpstrj id type x y z vx vy vz
 undump 1
 
-dump 2 all custom 1000 logs/packing_structure.lammpstrj id type x y z vx vy vz
+
 label packloop
 variable p loop 1000
 variable NUMTMC equal (${NUMATOMS}-$(atoms))/18
@@ -61,6 +62,7 @@ if "$(atoms) == ${NUMATOMS}" then "jump SELF packbreak"
 next p
 jump SELF packloop
 label packbreak
+dump 2 all custom 1000 logs/packing_structure.lammpstrj id type x y z vx vy vz
 undump 2
 reset_atoms id
 
@@ -100,11 +102,10 @@ thermo_style custom step temp press density f_PArxn[1]
 variable PAbonds_made equal f_PArxn[1]
 
 
-#restart 10000 restarts_polym/polym.restart
-dump 3 all custom ${BONDFREQ} logs/polymerization_structure.lammpstrj id type x y z vx vy vz 
+restart 10000 restarts_polym/polym.restart
 label loop
 variable a loop 375
-#if "${a} > 3" then "restart 10000 restarts_polym/polym.restart" 
+if "${a} > 3" then "restart 10000 restarts_polym/polym.restart" 
 print "==================================Current bonds formed = ${PAbonds_made} Minimum bonds desired = ${TARGET_BONDS}======================================="
 print "==================================NVT PA POLYMERIZATION RUN: 300 C==============================="
 velocity all create 300.0 $(66644*v_a*v_rand)
@@ -132,8 +133,10 @@ print "${PAbonds_made}" file PA_bonds.in
 variable  PAbonds_final equal ${PAbonds_made}
 unfix PArxn
 
+
 velocity all scale 300.0
 fix 1 all nvt temp 300 300 $(100.0*dt)
+dump 3 all custom ${BONDFREQ} logs/polymerization_structure.lammpstrj id type x y z vx vy vz 
 variable final_steps equal 750000-$(step) #aj changed from 750000
 print "==================================PA EQUILIBRATION RUN NUMBER OF STEPS = ${final_steps}================="
 thermo_style custom step temp press density
@@ -176,7 +179,6 @@ variable OHBONDS_NEEDED equal ${OPEN_C}
 variable OHbonds_made equal f_OHrxn[1]
 thermo_style custom step temp press density f_OHrxn[1]
 
-dump 4 all custom 10000 logs/OH_structure.lammpstrj id type x y z vx vy vz
 label loop2
 variable c loop 375
 print "==================================Current bonds formed = ${OHbonds_made}======================================="
@@ -206,11 +208,13 @@ unfix OHrxn
 
 variable final_steps2 equal 750000
 fix 1 all nvt temp 300 300 $(100.0*dt)
+dump 4 all custom 10000 logs/OH_structure.lammpstrj id type x y z vx vy vz
 print "==================================PA EQUILIBRATION RUN NUMBER OF STEPS = ${final_steps2}================="
 thermo_style custom step temp press density
 run 1500000 upto #aj changed from 1500000
-unfix 1
 undump 4
+unfix 1
+
 
 group EXCESSOHCL type 11 13 18
 delete_atoms group EXCESSOHCL bond yes
