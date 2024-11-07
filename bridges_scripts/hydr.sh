@@ -1,7 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=hydration
+<<<<<<< HEAD
 #SBATCH --output=hydration_output.out
 #SBATCH --error=hydration_error.err
+=======
+#SBATCH --output=lammps_output.out
+#SBATCH --error=lammps_error.err
+>>>>>>> 70c342d (changed job name in preamble)
 #SBATCH --nodes=4
 #SBATCH --ntasks-per-node=128
 #SBATCH --time=48:00:00

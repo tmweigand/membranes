@@ -1,7 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=equilibration
+<<<<<<< HEAD
 #SBATCH --output=equil_output.out
 #SBATCH --error=equil_error.err
+=======
+#SBATCH --output=lammps_output.out
+#SBATCH --error=lammps_error.err
+>>>>>>> 70c342d (changed job name in preamble)
 #SBATCH --nodes=4
 #SBATCH --ntasks-per-node=128
 #SBATCH --time=48:00:00
