@@ -54,6 +54,9 @@ next p
 jump SELF packloop
 label packbreak
 reset_atoms id
+dump 2 all custom 1000 logs/packing_structure.lammpstrj id type x y z vx vy vz
+undump 2
+
 # Settings
 dielectric       1.0
 neighbor         2.0 bin
@@ -90,10 +93,10 @@ thermo_style custom step temp press density f_PArxn[1]
 variable PAbonds_made equal f_PArxn[1]
 
 
-#restart 10000 ../restarts/polym.restart 
+restart 50000 restarts_polym/polym.restart
 label loop
 variable a loop 375
-#if "${a} > 3" then "restart 10000 ../restarts/polym.restart" 
+# if "${a} > 3" then "restart 10000 restarts_polym/polym.restart"
 print "==================================Current bonds formed = ${PAbonds_made} Minimum bonds desired = ${TARGET_BONDS}======================================="
 print "==================================NVT PA POLYMERIZATION RUN: 300 C==============================="
 velocity all create 300.0 $(66644*v_a*v_rand)
@@ -123,11 +126,13 @@ unfix PArxn
 
 velocity all scale 300.0
 fix 1 all nvt temp 300 300 $(100.0*dt)
-variable final_steps equal 750000-$(step) #aj changed from 750000
+dump 3 all custom ${BONDFREQ} logs/polymerization_structure.lammpstrj id type x y z vx vy vz 
+variable final_steps equal 1000000-$(step) #aj changed from 750000
 print "==================================PA EQUILIBRATION RUN NUMBER OF STEPS = ${final_steps}================="
 thermo_style custom step temp press density
-run 750000 upto #changed from 750000
+run 1000000 upto #changed from 750000
 unfix 1
+undump 3
 
 
 
@@ -195,9 +200,11 @@ unfix OHrxn
 
 variable final_steps2 equal 750000
 fix 1 all nvt temp 300 300 $(100.0*dt)
+dump 4 all custom 10000 logs/OH_structure.lammpstrj id type x y z vx vy vz
 print "==================================PA EQUILIBRATION RUN NUMBER OF STEPS = ${final_steps2}================="
 thermo_style custom step temp press density
-run 1500000 upto #aj changed from 1500000
+run 1750000 upto #aj changed from 1500000
+undump 4
 unfix 1
 
 
