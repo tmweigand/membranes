@@ -30,7 +30,7 @@ special_bonds    charmm
 # variable BOXSIZE equal 90*${mult}^(1/3)
 variable BOXSIZE_X equal 90*${mult1}^(1/3)
 variable BOXSIZE_Y equal 90*${mult1}^(1/3)
-variable BOXSIZE_Z equal 90*${mult2}^(1/3)
+variable BOXSIZE_Z equal 90*${mult1}^(1/3) * ${mult2}
 variable NUMMPD equal 300*${mult2} #change
 variable NUMATOMS equal ${mult2}*200*18+${mult2}*300*16 #change
 #dump 1 all custom 1000 logs/trajectory_polym.lammpstrj id type x y z vx vy vz #aj added line for VMD visualization
@@ -41,7 +41,7 @@ change_box all x final 0 ${BOXSIZE_X} y final 0 ${BOXSIZE_Y} z final 0 ${BOXSIZE
 lattice fcc 11.3
 molecule MPDmol ../../domain_in/MPD.mol 
 molecule TMCmol ../../domain_in/TMC.mol
-region WHOLEBOX block $(xlo+10) $(xhi-5) $(ylo+10) $(yhi-5) $(zlo+10) $(zhi-5) units box side in
+region WHOLEBOX block $(xlo+10) $(xhi-5) $(ylo+10) $(yhi-5) $(zlo+10) $((zhi-5)*${mult2}) units box side in
 create_atoms 0 box subset ${NUMMPD} $(25523*v_rand) mol MPDmol 212123
 group MPDs union all
 dump 1 all custom 1000 logs/initial_structure.lammpstrj id type x y z vx vy vz
