@@ -30,9 +30,10 @@ special_bonds    charmm
 # variable BOXSIZE equal 90*${mult}^(1/3)
 variable BOXSIZE_X equal 90*${mult1}^(1/3)
 variable BOXSIZE_Y equal 90*${mult1}^(1/3)
-variable BOXSIZE_Z equal 90*${mult1}^(1/3)*${mult2}
-variable NUMMPD equal 300*${mult2} #change
-variable NUMATOMS equal ${mult2}*200*18+${mult2}*300*16 #change
+variable BOXSIZE_Z equal 90*${mult1}^(1/3)*${mult2} #scales z dimesion based on the x,y dimensions
+variable mult_scaling equal ${mult1}*${mult2} #Scale factor for atoms
+variable NUMMPD equal 300*${mult_scaling} #change
+variable NUMATOMS equal ${mult_scaling}*200*18+${mult_scaling}*300*16 #change
 #dump 1 all custom 1000 logs/trajectory_polym.lammpstrj id type x y z vx vy vz #aj added line for VMD visualization
 read_data ../../domain_in/TMC_converted.lmps extra/improper/per/atom 2
 displace_atoms all move $(5*v_mult1) $(5*v_mult1) $(5*v_mult2) units box #change
