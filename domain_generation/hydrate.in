@@ -1,5 +1,4 @@
 # General MUST DEFINE VARIABLES mult AND rand USING THE -v FLAG IN COMMAND LINE CALL TO LMPS
-log log.HYDR
 units            real
 atom_style       full
 dimension        3
@@ -40,9 +39,11 @@ variable mult2d equal ${mult}^(2/3)
 # Reset all coordinates to start at 0.0 for future data analysis
 
 change_box all x delta -$(xlo) -$(xlo) y delta -$(ylo) -$(ylo) z delta -$(zlo) -$(zlo) units box
+print "$(xlo), $(xhi), $(ylo), $(yhi), $(zlo), $(zhi)"
 displace_atoms all move -$(xlo) -$(ylo) -$(zlo) units box
 
-#velocity all create 300 $(123*v_rand)
+# assigning velocity to all atoms
+velocity all create 300 $(123*v_rand)
 timestep 10.0
 minimize         1.0e-8 1.0e-8 1000 100000
 timestep 2.0
@@ -59,7 +60,7 @@ unfix 1
 # UNWRAP membrane
 region membranebox block  $(xlo) $(xhi)  $(ylo) $(yhi)  $(zlo) $(zhi-2.0*v_mult1d) side out units box
 delete_atoms region membranebox bond yes
-reset_atoms id sort yes
+reset_atom_ids sort yes
 region membranebox delete
 region membranebox block  INF INF INF INF INF INF units box
 group membrane region membranebox
@@ -72,13 +73,13 @@ variable NUM_H20 equal 3600*${mult2d}
 # Use slab modifier to accurately model interactions across periodic boundaries in the zdirection
 kspace_modify slab 3.0
 change_box all boundary p p f z delta -${z_delta} ${z_delta} units box
+print "$(xlo), $(xhi), $(ylo), $(yhi), $(zlo), $(zhi)"
 
 #add walls to the end of the boxes just in case waters try to escape the new fixed boundaries
-
 fix zwalls all wall/lj126 zlo $(zlo+v_z_delta-9*v_mult1d) 0.06844 3.40700 9 zhi $(zhi-v_z_delta+9*v_mult1d) 0.06844 3.40700 9 
 fix_modify zwalls energy yes
-# Minimize cut membrane to drive out floating atoms created by unwrapping
 
+# Minimize cut membrane to drive out floating atoms created by unwrapping
 timestep 10.0
 minimize         1.0e-8 1.0e-8 1000 100000
 timestep 1.0
@@ -93,14 +94,14 @@ unfix zwalls
 region membranebox block  $(xlo) $(xhi)  $(ylo) $(yhi)  $(zlo+v_z_delta) $(zhi-v_z_delta) side out units box
 delete_atoms region membranebox bond yes
 region membranebox delete
-reset_atoms id
+reset_atom_ids
 
 #Define regions within which to randomly add water molecules
 region FEED block INF INF INF INF $(zlo+10*v_mult1d) $(zlo+v_z_delta-10*v_mult1d) units box
 region PERM block INF INF INF INF $(zhi-v_z_delta+10*v_mult1d) $(zhi-10*v_mult1d) units box
 
 # Add water molecules to feed and permeate regions, minimize to move overlapping molecules
-molecule mol1 ../../molecules/tip3p.mol
+molecule mol1 ../../domain_in/tip3p.mol
 create_atoms 0 region FEED subset ${NUM_H20} $(521*v_mult*v_rand) mol mol1 $(322*v_mult*v_rand)
 create_atoms 0 region PERM subset ${NUM_H20} $(512*v_mult*v_rand) mol mol1 $(632*v_mult*v_rand)
 
@@ -110,7 +111,6 @@ lattice hcp ${GRAPHENE_LATTICE_CONST}
 group FEEDWATER region FEED
 group PERMWATER region PERM
 group WATER type 15 16
-
 
 timestep 10.0
 minimize         1.0e-8 1.0e-8 1000 100000
@@ -155,7 +155,7 @@ group mobile subtract all zwalls
 change_box all z delta $(-200*v_mult1d) $(200*v_mult1d) units box
 
 #Pressurize system with pistons
-fix balance1 all balance 0 1.0 shift z 10 1.1
+# fix balance1 all balance 0 1.0 shift z 10 1.1
 fix zwalls1 all wall/lj126 zlo $(zlo) 0.06844 3.40700 9 zhi $(zhi) 0.06844 3.40700 9
 fix_modify zwalls1 energy yes
 
@@ -165,39 +165,45 @@ variable APPL_PRESS_PERM equal 0.5*${ATM_to_nm2}
 variable PISTON_AREA equal  ($(xhi)-$(xlo))*($(yhi)-$(ylo))
 variable pos_HYDRATE_FORCE equal ${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_FEED}/${FinMD_to_FinN}
 variable neg_HYDRATE_FORCE equal -${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_PERM}/${FinMD_to_FinN}
-fix FEEDPISTON LOzwall rigid single torque * off off off force * off off on 
-fix PERMPISTON HIzwall rigid single torque * off off off force * off off on 
 
 fix FEEDFORCE LOzwall addforce  0.0 0.0 v_pos_HYDRATE_FORCE
 fix PERMFORCE HIzwall addforce  0.0 0.0 v_neg_HYDRATE_FORCE
 
-#Collect sufficient data for morphological analysis
+# fix FEEDPISTON LOzwall rigid single torque * off off off force * off off on 
+# fix PERMPISTON HIzwall rigid single torque * off off off force * off off on 
+
+fix PERMPISTON zwalls rigid single torque * off off off force * off off on 
+
+# Collect sufficient data for morphological analysis
 compute        peratomstressvol WATER stress/atom NULL 
 compute	       peratomstressvolke WATER stress/atom NULL ke 
 compute        peratomstressvolkspace WATER stress/atom NULL kspace
 compute        peratomstressvolfix WATER stress/atom NULL fix 
 compute        peratomvol WATER voronoi/atom
-dump waterdata WATER custom/gz 100000 ../data/hydr/pressuredata.*.gz id mol type mass q x y z vx vy vz c_peratomstressvol[1] c_peratomstressvol[2] c_peratomstressvol[3] c_peratomstressvolke[1] c_peratomstressvolke[2] c_peratomstressvolke[3] c_peratomstressvolkspace[1] c_peratomstressvolkspace[2] c_peratomstressvolkspace[3] c_peratomstressvolfix[1] c_peratomstressvolfix[2] c_peratomstressvolfix[3] c_peratomvol[1]
+dump waterdata WATER custom/gz 100000 logs/pressuredata.*.gz id mol type mass q x y z vx vy vz c_peratomstressvol[1] c_peratomstressvol[2] c_peratomstressvol[3] c_peratomstressvolke[1] c_peratomstressvolke[2] c_peratomstressvolke[3] c_peratomstressvolkspace[1] c_peratomstressvolkspace[2] c_peratomstressvolkspace[3] c_peratomstressvolfix[1] c_peratomstressvolfix[2] c_peratomstressvolfix[3] c_peratomvol[1]
 dump_modify waterdata sort 2
-dump membranedata membrane custom/gz 100000 ../data/membrane/membranedata.*.gz id mol type mass q x y z
+dump membranedata membrane custom/gz 100000 logs/membranedata.*.gz id mol type mass q x y z
 dump_modify membranedata sort 1
-dump systemdata all custom/gz 100000 ../data/hydr/systemdata.*.gz id mol type mass q x y z
+dump systemdata all custom/gz 100000 logs/systemdata.*.gz id mol type mass q x y z
 dump_modify systemdata sort 1
 
 # Run hydration experiment
 reset_atoms id
 write_data test.lmps
-restart 1000000 restarts/hydr/restart.*
+restart 1000000 restarts_hydr/restart.*
 neigh_modify exclude type 17 17
-#fix FXSHAKE mobile shake 0.0001 20 0 a 4 9 10 12 19 21 22 25 b 2 9 10 15 16 17 t 5 8 13 14 15
+fix FXSHAKE mobile shake 0.0001 20 0 a 4 9 10 12 19 21 22 25 b 2 9 10 15 16 17 t 5 8 13 14 15
 fix FXSHAKE mobile shake 0.0001 10 0 b 17 a 22 t 5 8 14
+fix balance1 all balance 0 1.0 shift z 10 1.1
 fix 1 mobile nvt temp 300 300 200
 thermo 1000
 timestep 1.0
-write_restart restarts/hydr/hydr_pre.restart
+write_restart restarts_hydr/hydr_pre.restart
 run 3000000
-write_restart restarts/hydr/hydr_init.restart
+write_restart restarts_hydr/hydr_init.restart
 timestep 2.0
 run 25000000
 unfix 1 
-write_data logs/hydrated_data.lmps
+unfix balance1
+write_data hydrated_data.lmps
+
