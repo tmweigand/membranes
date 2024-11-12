@@ -41,8 +41,7 @@ change_box all x final 0 ${BOXSIZE_X} y final 0 ${BOXSIZE_Y} z final 0 ${BOXSIZE
 lattice fcc 11.3
 molecule MPDmol ../../domain_in/MPD.mol 
 molecule TMCmol ../../domain_in/TMC.mol
-variable zhi_adj equal (zhi*${mult2}-5)
-region WHOLEBOX block $(xlo+10) $(xhi-5) $(ylo+10) $(yhi-5) $(zlo+10) $(zhi_adj) units box side in
+region WHOLEBOX block $(xlo+10) $(xhi-5) $(ylo+10) $(yhi-5) $(zlo+10) $(zhi*v_mult2-5) units box side in
 create_atoms 0 box subset ${NUMMPD} $(25523*v_rand) mol MPDmol 212123
 group MPDs union all
 dump 1 all custom 1000 logs/initial_structure.lammpstrj id type x y z vx vy vz
