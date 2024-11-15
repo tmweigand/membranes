@@ -36,13 +36,13 @@ variable NUMMPD equal 300*${mult_scaling} #change
 variable NUMATOMS equal ${mult_scaling}*200*18+${mult_scaling}*300*16 #change
 #dump 1 all custom 1000 logs/trajectory_polym.lammpstrj id type x y z vx vy vz #aj added line for VMD visualization
 read_data ../../domain_in/TMC_converted.lmps extra/improper/per/atom 2
-displace_atoms all move $(5*v_mult) $(5*v_mult) $(5*v_scale) units box #change
+displace_atoms all move $(5*v_mult) $(5*v_mult) $(5*v_mult_scaling) units box #change
 delete_atoms group all
 change_box all x final 0 ${BOXSIZE_X} y final 0 ${BOXSIZE_Y} z final 0 ${BOXSIZE_Z}  #change boxsizes
 lattice fcc 11.3
 molecule MPDmol ../../domain_in/MPD.mol 
 molecule TMCmol ../../domain_in/TMC.mol
-region WHOLEBOX block $(xlo+10) $(xhi-5) $(ylo+10) $(yhi-5) $(zlo+10) $(zhi*v_scale-5) units box side in
+region WHOLEBOX block $(xlo+10) $(xhi-5) $(ylo+10) $(yhi-5) $(zlo+10) $(zhi-5) units box side in
 create_atoms 0 box subset ${NUMMPD} $(25523*v_rand) mol MPDmol 212123
 group MPDs union all
 dump 1 all custom 1000 logs/initial_structure.lammpstrj id type x y z vx vy vz
@@ -102,10 +102,10 @@ thermo_style custom step temp press density f_PArxn[1]
 
 variable PAbonds_made equal f_PArxn[1]
 
-restart 100 restarts_polym/polym.restart
+# restart 100 restarts_polym/polym.restart
 label loop
 variable a loop 375
-if "${a} > 3" then "restart 100000 restarts_polym/polym.restart" 
+# if "${a} > 3" then "restart 100000 restarts_polym/polym.restart" 
 print "==================================Current bonds formed = ${PAbonds_made} Minimum bonds desired = ${TARGET_BONDS}======================================="
 print "==================================NVT PA POLYMERIZATION RUN: 300 C==============================="
 velocity all create 300.0 $(66644*v_a*v_rand)
