@@ -1,6 +1,8 @@
 #Restart script for polymerization
+#Command line variables, -var mult, -var scale, -var rand, -var xlink, -var path, -var init_bonds
 
 #System
+log logs/log.restart_POLYM
 units            real
 atom_style       full
 dimension        3
@@ -29,8 +31,10 @@ variable NUMMPD equal 300*${mult_scaling}
 variable NUMATOMS equal ${mult_scaling}*200*18+${mult_scaling}*300*16
 
 #read restart file in
-#read_restart restarts_polym/polym.restart.* #default is polym.restart.*, wildcard takes last file in folder
-read_restart ../cubic_0.1/restarts_polym/polym.restart.200000
+variable path string "${restart_path}" #-v restart_path "filepath" in command line
+#Use "polym.restart.*" to use the last file in folder starting with polym.restart
+print "Restart file path: ${path}"
+read_restart ${path}
 
 lattice fcc 11.3
 molecule MPDmol ../../domain_in/MPD.mol
