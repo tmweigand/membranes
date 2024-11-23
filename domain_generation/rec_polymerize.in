@@ -1,6 +1,6 @@
 # Polymerization script for TMC carbon to MPD nitrogen 
 # Usage: Ensure call to LAMMPS is made from folder where data.lmps is saved, assume that reaction scripts are contained in ../../scripts from folder where data.lmps is saved.
-# Usage: Ensure command line defines -var mult, -var rand, and -var xlink
+# Usage: Ensure command line defines -var mult, -var rand, -var xlink, and -var scale
 
 # read_restart restarts_polym/restart.750000.lmp
 # System
@@ -102,10 +102,10 @@ thermo_style custom step temp press density f_PArxn[1]
 
 variable PAbonds_made equal f_PArxn[1]
 
-restart 100000 restarts_polym/polym.restart
+restart 100 restarts_polym/polym.restart
 label loop
 variable a loop 375
-if "${a} > 3" then "restart 100000 restarts_polym/polym.restart" 
+if "${a} > 3" then "restart 10000 restarts_polym/polym.restart" 
 print "==================================Current bonds formed = ${PAbonds_made} Minimum bonds desired = ${TARGET_BONDS}======================================="
 print "==================================NVT PA POLYMERIZATION RUN: 300 C==============================="
 velocity all create 300.0 $(66644*v_a*v_rand)
@@ -134,7 +134,7 @@ unfix PArxn
 
 
 velocity all scale 300.0
-fix 1 all nvt temp 300 300 $(100.0*dt)
+fix 1 all nvt temp 300 300 $(1.*dt)
 dump 3 all custom ${BONDFREQ} logs/polymerization_structure.lammpstrj id type x y z vx vy vz 
 variable final_steps equal 750000-$(step) #aj changed from 750000
 print "==================================PA EQUILIBRATION RUN NUMBER OF STEPS = ${final_steps}================="
