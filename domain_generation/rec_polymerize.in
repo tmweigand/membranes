@@ -183,12 +183,12 @@ variable c loop 375
 print "==================================Current bonds formed = ${OHbonds_made}======================================="
 print "==================================NVT OH POLYMERIZATION RUN: 300 C==============================="
 velocity all create 300.0 $(41234*v_c*v_rand)
-fix 1 statted_grp_REACT nvt temp 300 300 $(100.0*dt)
+fix 1 statted_grp_REACT nvt temp 300 300 $(1.*dt)
 fix 4 bond_react_MASTER_group temp/rescale 50 300 300 10 1
 run 1000
 unfix 1
 unfix 4
-fix 1 statted_grp_REACT npt temp 300 300 $(100.0*dt) iso 0.5 0.5 $(100.0*dt)
+fix 1 statted_grp_REACT npt temp 300 300 $(1.*dt) iso 0.5 0.5 $(1.*dt)
 fix 4 bond_react_MASTER_group temp/rescale 50 300 300 10 1
 run 1000
 unfix 1
