@@ -1,0 +1,115 @@
+# Polymerization script for TMC carbon to MPD nitrogen 
+# Usage: Ensure call to LAMMPS is made from folder where data.lmps is saved, assume that reaction scripts are contained in ../../scripts from folder where data.lmps is saved.
+# Usage: Ensure command line defines -var mult, -var rand, -var xlink, and -var scale
+
+# General
+units            real
+atom_style       full
+dimension        3
+newton           off
+boundary         p p p
+
+
+# Styles
+log logs/log.EQ
+pair_style       lj/charmm/coul/long 7.0 9.0
+pair_modify      shift no mix sixthpower
+kspace_style     pppm 1.0e-4
+kspace_modify    diff ad
+bond_style       harmonic
+angle_style      harmonic
+dihedral_style   charmm
+improper_style   harmonic
+special_bonds    charmm
+
+# System definition
+read_data logs/polym_clean.lmps
+
+variable BONDFREQ equal 50
+group NUM_AMIDE type 7
+variable MAX_BONDS equal count(NUM_AMIDE)
+print "MAX_BONDS = ${MAX_BONDS}"
+variable TARGET_BONDS equal (${MAX_BONDS}*${xlink}) #target crosslinking degree
+
+
+variable NUM_OH equal (${MAX_BONDS}*0.8)
+print "NUMBER of OH: ${NUM_OH}"
+
+region bawks block INF INF INF INF INF INF
+molecule OH ../../domain_in/hydroxide.mol
+
+create_atoms 0 random ${NUM_OH} 43770 bawks mol OH 54383 
+minimize         1.0e-4 1.0e-4 1000 100000
+write_data logs/term_data.lmps
+
+
+molecule mol3 ../../domain_in/TMC_OH_prerxn.mol
+molecule mol4 ../../domain_in/TMC_OH_postrxn.mol
+fix OHrxn all bond/react stabilization yes statted_grp .03 &
+  react rxn1 all ${BONDFREQ} 0.0 5.0 mol3 mol4 ../../domain_in/TMCOH_rxnmap.in #aj 3rd float value changed, proximity for rxn, original=5.0
+
+group Cls type 18
+variable OPEN_C equal count(Cls)
+print "OPEN CHLORIDES ${OPEN_C}" #aj check to make sure there are open chlorides in system for rxn to occur
+variable OHBONDS_NEEDED equal ${OPEN_C}
+
+variable OHbonds_made equal f_OHrxn[1]
+thermo_style custom step temp press density f_OHrxn[1]
+
+
+# Variables to store box boundaries
+variable xlo equal xlo  # Lower x bound
+variable xhi equal xhi  # Upper x bound
+variable ylo equal ylo  # Lower y bound
+variable yhi equal yhi  # Upper y bound
+variable zlo equal zlo  # Lower z bound
+variable zhi equal zhi  # Upper z bound
+
+
+# Print box dimensions
+print "Box dimensions: X= ${xlo}, Y= ${ylo}, Z= ${zlo}"
+print "Box dimensions: X= ${xhi}, Y= ${yhi}, Z= ${zhi}"
+
+
+label loop2
+variable c loop 375
+print "==================================Current bonds formed = ${OHbonds_made}======================================="
+print "==================================NVT OH POLYMERIZATION RUN: 300 C==============================="
+velocity all create 300.0 $(41234*v_c*v_rand)
+fix 1 statted_grp_REACT nvt temp 300 300 $(100.*dt)
+fix 4 bond_react_MASTER_group temp/rescale 50 300 300 10 1
+run 1000
+unfix 1
+unfix 4
+fix 1 statted_grp_REACT npt temp 300 300 $(100.*dt) iso 0.5 0.5 $(100.*dt)
+fix 4 bond_react_MASTER_group temp/rescale 50 300 300 10 1
+run 1000
+unfix 1
+unfix 4
+reset_atoms id
+print "Checking bonds: Current = ${OHbonds_made}, Needed = ${OHBONDS_NEEDED}"
+if "${OHbonds_made} >= ${OHBONDS_NEEDED}" then "jump SELF break2"
+variable d equal ${c}
+next c
+jump SELF loop2
+
+
+label break2
+print "==================================FORMING BONDS COMPLETE DONE: Total bonds formed = ${OHbonds_made}============"
+unfix OHrxn
+
+# variable final_steps2 equal 100000
+fix 1 all nvt temp 300 300 $(100.*dt)
+print "==================================PA EQUILIBRATION ================="
+thermo_style custom step temp press density
+# run 100000
+unfix 1
+
+
+group EXCESSOHCL type 11 13 18
+delete_atoms group EXCESSOHCL bond yes
+dump 4 all custom 10000 logs/OH_structure.lammpstrj id type x y z vx vy vz
+undump 4
+# Data file output
+reset_atoms id
+write_data logs/term_final.lmps
