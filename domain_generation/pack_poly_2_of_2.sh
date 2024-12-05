@@ -11,4 +11,4 @@ module load openmpi/4.1.1-gcc8.3.1
 mkdir logs
 mkdir restarts_polym
 
-mpirun -np 512 /jet/home/ajotcham/lammps-29-2024/build/lmp -in ../../domain_generation/rec_polymerize_2_of_2.in -var mult 64 -var scale 1.0 -var rand # -var xlink #
+mpirun -np 512 /jet/home/ajotcham/lammps-29Aug2024/build/lmp -in ../../domain_generation/rec_polymerize_2_of_2.in -var mult 64 -var scale 1.0 -var rand # -var xlink #
