@@ -1,7 +1,4 @@
 # General MUST DEFINE VARIABLES mult AND rand USING THE -v FLAG IN COMMAND LINE CALL TO LMPS
-
-log logs/log.HYDR
-
 units            real
 atom_style       full
 dimension        3
@@ -104,7 +101,7 @@ region FEED block INF INF INF INF $(zlo+10*v_mult1d) $(zlo+v_z_delta-10*v_mult1d
 region PERM block INF INF INF INF $(zhi-v_z_delta+10*v_mult1d) $(zhi-10*v_mult1d) units box
 
 # Add water molecules to feed and permeate regions, minimize to move overlapping molecules
-molecule mol1 ../../domain_in/tip3p.mol
+molecule mol1 ../domain_in/tip3p.mol
 create_atoms 0 region FEED subset ${NUM_H20} $(521*v_mult*v_rand) mol mol1 $(322*v_mult*v_rand)
 create_atoms 0 region PERM subset ${NUM_H20} $(512*v_mult*v_rand) mol mol1 $(632*v_mult*v_rand)
 
@@ -157,22 +154,17 @@ group mobile subtract all zwalls
 
 change_box all z delta $(-200*v_mult1d) $(200*v_mult1d) units box
 
-
 #Pressurize system with pistons
 # fix balance1 all balance 0 1.0 shift z 10 1.1
 fix zwalls1 all wall/lj126 zlo $(zlo) 0.06844 3.40700 9 zhi $(zhi) 0.06844 3.40700 9
 fix_modify zwalls1 energy yes
 
-print "test!"
+
 variable APPL_PRESS_FEED equal 0.5*${ATM_to_nm2}
 variable APPL_PRESS_PERM equal 0.5*${ATM_to_nm2}
 variable PISTON_AREA equal  ($(xhi)-$(xlo))*($(yhi)-$(ylo))
 variable pos_HYDRATE_FORCE equal ${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_FEED}/${FinMD_to_FinN}
 variable neg_HYDRATE_FORCE equal -${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_PERM}/${FinMD_to_FinN}
-
-fix FEEDPISTON LOzwall rigid/nve single torque * off off off force * off off on 
-fix PERMPISTON HIzwall rigid/nve single torque * off off off force * off off on 
-
 
 fix FEEDFORCE LOzwall addforce  0.0 0.0 v_pos_HYDRATE_FORCE
 fix PERMFORCE HIzwall addforce  0.0 0.0 v_neg_HYDRATE_FORCE
@@ -198,18 +190,17 @@ dump_modify systemdata sort 1
 # Run hydration experiment
 reset_atoms id
 write_data test.lmps
-restart 1000000 restarts_hydr/restart.*
+restart 1000000 hydr/restarts/restart.*
 neigh_modify exclude type 17 17
-
-#fix FXSHAKE mobile shake 0.0001 20 0 a 4 9 10 12 19 21 22 25 b 2 9 10 15 16 17 t 5 8 13 14 15
+fix FXSHAKE mobile shake 0.0001 20 0 a 4 9 10 12 19 21 22 25 b 2 9 10 15 16 17 t 5 8 13 14 15
 fix FXSHAKE mobile shake 0.0001 10 0 b 17 a 22 t 5 8 14
 fix balance1 all balance 0 1.0 shift z 10 1.1
 fix 1 mobile nvt temp 300 300 200
 thermo 1000
 timestep 1.0
-write_restart restarts_hydr/hydr_pre.restart
+write_restart restarts/hydr/hydr_pre.restart
 run 3000000
-write_restart restarts_hydr/hydr_init.restart
+write_restart restarts/hydr/hydr_init.restart
 timestep 2.0
 run 25000000
 unfix 1 
