@@ -1,0 +1,8 @@
+LAMMPS (29 Aug 2024 - Update 1)
+# Polymerization script for TMC carbon to MPD nitrogen
+# Usage: Ensure call to LAMMPS is made from folder where data.lmps is saved, assume that reaction scripts are contained in ../../scripts from folder where data.lmps is saved.
+# Usage: Ensure command line defines -var mult, -var rand, and -var xlink
+
+# read_restart ../restarts/polym/restart.750000.lmp
+# System
+log logs/log.POLYM
