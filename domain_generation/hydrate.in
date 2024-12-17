@@ -40,7 +40,7 @@ run_style verlet
 variable GRAPHENE_LATTICE_CONST equal 3.990511111
 
 # Set lattice constant for use in packing waters into feed/permeate
-lattice fcc 4.86
+lattice fcc 4.36
 variable FinMD_to_FinN equal 6.94768717535204e-11
 variable ANG_to_M equal 1e-10
 variable ATM_to_nm2 equal 101325

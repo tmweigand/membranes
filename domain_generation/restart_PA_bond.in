@@ -68,13 +68,13 @@ minimize         1.0e-8 1.0e-8 10000 100000
 
 timestep 1.0
 
-restart 10000 restarts/polym.restart
+#restart 10000 restarts/polym.restart
 write_data test.lmps
 fix BALANCE all balance 1000 1.05 shift xyz 10 1.05
 #reaction loop
 variable PAbonds_made equal $(v_init_bonds)
 print "Current bonds formed = ${PAbonds_made}"
-variable a loop 1000
+variable a loop 1000000
 label loop
 if "${a} > 5" then &
     "variable BONDLENGTH equal 5.5"
