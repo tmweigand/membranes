@@ -191,7 +191,7 @@ dump waterdata WATER custom/gz 5000 hydr/pressure/pressuredata.*.gz id mol type 
 dump systemdata all custom/gz 5000 hydr/system/systemdata.*.gz id mol type mass q x y z vx vy vz v_peratompress c_peratomvol[1]
 dump membranedata SOLID custom/gz 5000 hydr/membrane/membranedata.*.gz id mol type mass q x y z v_peratompress c_peratomvol[1]
 dump_modify systemdata sort 2
-restart 5000 hydr/restarts/restart.*
+# restart 5000 hydr/restarts/restart.*
 
 
 timestep 1.0
