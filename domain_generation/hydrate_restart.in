@@ -19,7 +19,7 @@ special_bonds    charmm
 neigh_modify exclude type 17 17
 
 # System definition
-read_restart hydr/restarts/restart.*
+read_restart hydr/restarts/restart.5690000
 
 # group deletey id 201946 201960
 # delete_atoms group deletey bond yes
@@ -35,7 +35,7 @@ run_style verlet
 variable GRAPHENE_LATTICE_CONST equal 3.990511111
 
 # Set lattice constant for use in packing waters into feed/permeate
-lattice fcc 4.86
+lattice fcc 4.36
 variable FinMD_to_FinN equal 6.94768717535204e-11
 variable ANG_to_M equal 1e-10
 variable ATM_to_nm2 equal 101325
@@ -74,19 +74,20 @@ compute        totalvol WATER reduce sum c_peratomvol[1]
 
 variable actualdensity equal c_totalmass*(1e8)^3/(6.022e23*c_totalvol)
 variable press equal -(c_totalpressure[1]+c_totalpressure[2]+c_totalpressure[3])/(3*c_totalvol)
-dump waterdata WATER custom/gz 5000 hydr/pressure/pressuredata.*.gz id mol type mass q x y z xu yu zu vx vy vz v_peratompress c_peratomvol[1] c_peratomdisplacement[1] c_peratomdisplacement[2] c_peratomdisplacement[3]
-dump systemdata all custom/gz 5000 hydr/system/systemdata.*.gz id mol type mass q x y z vx vy vz v_peratompress c_peratomvol[1]
-dump membranedata SOLID custom/gz 5000 hydr/membrane/membranedata.*.gz id mol type mass q x y z v_peratompress c_peratomvol[1]
-dump_modify systemdata sort 2
+#dump waterdata WATER custom/gz 5000 hydr/pressure/pressuredata.*.gz id mol type mass q x y z xu yu zu vx vy vz v_peratompress c_peratomvol[1] c_peratomdisplacement[1] c_peratomdisplacement[2] c_peratomdisplacement[3]
+#dump systemdata all custom/gz 5000 hydr/system/systemdata.*.gz id mol type mass q x y z vx vy vz v_peratompress c_peratomvol[1]
+#dump membranedata SOLID custom/gz 5000 hydr/membrane/membranedata.*.gz id mol type mass q x y z v_peratompress c_peratomvol[1]
+#dump_modify systemdata sort 2
 restart 5000 hydr/restarts/restart.*
 
 
-timestep 2.0
+timestep 1.0
 thermo 5000
 fix 1 all nvt temp 300 300 200
 
 thermo_style custom step temp press v_press v_actualdensity c_totalvol
 fix FXSHAKE all rattle 0.0001 20 5000 b 17 a 22
 
+#restart 5000 hydr/restarts/restart.*
 run 10000000
 unfix 1
