@@ -1,13 +1,17 @@
 #!/bin/bash
-#SBATCH --job-name=lammps_job
-#SBATCH --output=lammps_output.out
-#SBATCH --error=lammps_error.err
+#SBATCH --job-name=hydration
+#SBATCH --output=hydration_output.out
+#SBATCH --error=hydration_error.err
 #SBATCH --nodes=4
-#SBATCH --ntasks-per-node=32
-#SBATCH --time=24:00:00
+#SBATCH --ntasks-per-node=128
+#SBATCH --time=48:00:00
 #SBATCH --partition=RM
 
 module load openmpi/4.1.1-gcc8.3.1
-mkdir restarts_hydr
+mkdir hydr
+mkdir hydr/pressure
+mkdir hydr/system
+mkdir hydr/membrane
+mkdir hydr/restarts
 
-mpirun -np 128 /jet/home/ajotcham/lammps-29Aug2024/build/lmp -in  ../../domain_generation/hydrate.in ###Need to add variable initializations here
+mpirun -np 512 /jet/home/ajotcham/lammps-29Aug2024/build/lmp -in ../../domain_generation/hydrate.in -var mult 64 -var rand 5  -var FEEDP 1
