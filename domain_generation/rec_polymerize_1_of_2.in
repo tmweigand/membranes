@@ -93,20 +93,33 @@ variable MAX_BONDS equal count(NUM_AMIDE)
 print "MAX_BONDS = ${MAX_BONDS}"
 variable TARGET_BONDS equal (${MAX_BONDS}*${xlink}) #target crosslinking degree
 
+
+# variable sum equal 0
+# variable inc equal 0
+# variable sum equal f_store+v_inc
+variable PAbonds_made equal 0
+variable sum equal f_count_bonds+v_PAbonds_made
+# variable sum equal f_count_bonds+f_PArxn[1]
+label bondcounting
+fix count_bonds all ave/time 1 1 1 v_sum
+
 label SETRXN
+print "testing testing testing ${PAbonds_made}" 
 fix PArxn all bond/react stabilization yes statted_grp .03 &
   react rxn1 all ${BONDFREQ} 0.0 5.0 mol1 mol2 ../../domain_in/MPDTMC_rxnmap.in
 
 thermo 100
 thermo_style custom step temp press density f_PArxn[1]
 
-variable PAbonds_made equal f_PArxn[1]
+# variable PAbonds_made equal f_PArxn[1]+v_all_PA_bonds
+# variable sum equal f_count_bonds+f_PArxn[1]
 
 restart 100 restarts_polym/polym.restart
 label loop
 variable a loop 375
 if "${a} > 3" then "restart 10000 restarts_polym/polym.restart" 
-print "==================================Current bonds formed = ${PAbonds_made} Minimum bonds desired = ${TARGET_BONDS}======================================="
+# print "==================================Current bonds formed = ${PAbonds_made} Minimum bonds desired = ${TARGET_BONDS}======================================="
+print "==================================Current bonds formed = ${sum} Minimum bonds desired = ${TARGET_BONDS}======================================="
 print "==================================NVT PA POLYMERIZATION RUN: 300 C==============================="
 velocity all create 300.0 $(66644*v_a*v_rand)
 fix 1 statted_grp_REACT nvt temp 300 300 $(100.*dt)
@@ -120,11 +133,24 @@ run 1000
 unfix 1
 unfix 4
 reset_atoms id
-if "${PAbonds_made} >= ${TARGET_BONDS}" then "jump SELF break"
-variable b equal ${a}
+# if "${PAbonds_made} >= ${TARGET_BONDS}" then "jump SELF break"
+# if "${f_count_bonds} >= ${TARGET_BONDS}" then "jump SELF break"
+print "${a}"
 next a
 
-jump SELF loop
+variable PAbonds_made equal f_PArxn[1]
+#variable all_PA_bonds equal v_PAbonds_made
+if "${a} >= 1 && ${a} != 375" then "jump SELF SETRXN" elif "${a} == 375" "jump SELF break" else "jump SELF loop"
+
+
+
+
+
+
+
+
+
+
 
 label break
 print "==================================FORMING BONDS COMPLETE DONE: Total bonds formed = ${PAbonds_made}============"
