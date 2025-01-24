@@ -113,15 +113,14 @@ variable TARGET_BONDS equal (${MAX_BONDS}*${xlink}) #target crosslinking degree
 
 
 # Set up for tracking bond count
-# outer_bound_count holds the count when we change methods. 
-# inner_bound_count tracks the bond count for a specific method
+# outer_bound_count holds the count when we change approaches and need to delete (unfix) the reaction. 
+# inner_bound_count tracks the bond count for a specific method/ instance of a reaction
 variable outer_bond_count equal 0
 variable current_bond_count equal 0
-fix bond_tracking all print 1 "Bonds Approach Count Iteration Count " file iterations_bond.out title "" screen no
-
+fix bond_tracking all print 1 "Bonds Approach Count Iteration Count " file iterations_bond_distance.out title "" screen no
 
 # Set the maximum number of approaches we are going to use
-variable num_approaches equal 5
+variable num_approaches equal 5 
 variable approach_attempt loop $(v_num_approaches)
 
 # Label for outer loop. Here we can modify the approach 
@@ -132,14 +131,17 @@ label update_approach
 variable max_bond_distance equal 5.0
 variable bond_frequency equal 50
 
+if "${approach_attempt} > 1" then &
+  "variable max_bond_distance equal $(v_max_bond_distance + 0.25*v_approach_attempt)"
+
 # Define reaction 
 fix PArxn all bond/react stabilization yes statted_grp .03 &
   react rxn1 all ${bond_frequency} 0.0 ${max_bond_distance} mol1 mol2 ../../domain_in/MPDTMC_rxnmap.in
 
 # Set to track bond count with this approach 
 variable inner_bond_count equal f_PArxn[1]
-thermo 1000
-thermo_style custom step temp press density
+thermo 0
+thermo_style custom step temp press density v_current_bond_count
 
 # Set up inner loop 
 label keep_reacting
@@ -154,7 +156,7 @@ velocity all create 300.0 $(66644*v_inner_loop*v_rand)
 
 
 # Track the bond count and other information in file 
-fix bond_tracking all print 2000 "Bonds ${current_bond_count} No Approach Count ${approach_attempt} Iteration Count ${inner_loop}" append iterations_bond.out title "" screen no
+fix bond_tracking all print 2000 "Bonds ${current_bond_count} Approach Count ${approach_attempt} Iteration Count ${inner_loop} Bond Distance ${max_bond_distance}" append iterations_bond_distance.out title "" screen no
 
 
 # Reacting and unreacting 
@@ -198,11 +200,11 @@ elif "${num_approaches} == ${approach_attempt}" &
   "jump SELF end_bond_forming" &
 else &
   "next inner_loop" &
-  "jump SELF keep_reacting"
+ "jump SELF keep_reacting"
 
 label end_bond_forming
 print "==================================FORMING BONDS COMPLETE DONE: Total bonds formed = ${current_bond_count}============"
-print "${current_bond_count}" file PA_bonds.in screen no
+print "${current_bond_count}" file PA_bonds.in
 variable  PAbonds_final equal ${current_bond_count}
 unfix PArxn
 
