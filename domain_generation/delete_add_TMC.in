@@ -12,21 +12,30 @@ group XLINKED_ATOMS include molecule
 group UNXLINKED_ATOMS subtract all XLINKED_ATOMS
 group UNXLINKED_TMC intersect UNXLINKED_ATOMS chlorine
 group UNXLINKED_TMC include molecule
+group UNXLINKED_MPD subtract UNXLINKED_ATOMS UNXLINKED_TMC 
  
 variable count_UNXLINKED_TMC equal count(UNXLINKED_TMC)/18
 
 if "${count_UNXLINKED_TMC} > 0" then &
     "include ../../domain_generation/add_TMC.in"
 
+variable count_UNXLINKED_MPD equal count(UNXLINKED_MPD)/16
+
+if "${count_UNXLINKED_MPD} > 0" then &
+    "include ../../domain_generation/add_MPD.in"
+
 
 variable atom_count delete
 variable atom_charge_xlinked delete
 variable count_UNXLINKED_TMC delete
 variable TMC_mol_count_to_add delete
+variable count_UNXLINKED_MPD delete
+variable MPD_mol_count_to_add delete
 variable pp delete
 
 group chlorine delete
 group XLINKED_ATOMS delete
 group UNXLINKED_ATOMS delete
 group UNXLINKED_TMC delete
+group UNXLINKED_MPD delete
  

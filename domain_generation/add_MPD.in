@@ -1,19 +1,20 @@
-# Delete TMC
-delete_atoms group UNXLINKED_TMC
+# Delete MPD
+delete_atoms group UNXLINKED_MPD
 
 # Refresh - just in case
 group chlorine delete
 group XLINKED_ATOMS delete
 group UNXLINKED_ATOMS delete
 group UNXLINKED_TMC delete
+group UNXLINKED_MPD delete
 
 
-# Add in new TMC molecules 
-label tmc_pack_loop_2
+# Add in new MPD molecules 
+label MPD_pack_loop
 variable pp loop 1000
-variable TMC_mol_count_to_add equal (${atom_count}-$(atoms))/18
-print "TMC molecules needed to be added ${TMC_mol_count_to_add} Loop ${pp}"
-create_atoms 0 box subset ${TMC_mol_count_to_add} $(5221*v_pp*v_rand) mol TMCmol 325132
+variable MPD_mol_count_to_add equal (${atom_count}-$(atoms))/16
+print "MPD molecules needed to be added ${MPD_mol_count_to_add} Loop ${pp}"
+create_atoms 0 box subset ${MPD_mol_count_to_add} $(5221*v_pp*v_rand) mol MPDmol 325132
 
 group chlorine type 18
 group XLINKED_ATOMS variable atom_charge_xlinked
@@ -21,18 +22,18 @@ group XLINKED_ATOMS include molecule
 group UNXLINKED_ATOMS subtract all XLINKED_ATOMS
 group UNXLINKED_TMC intersect UNXLINKED_ATOMS chlorine
 group UNXLINKED_TMC include molecule
+group UNXLINKED_MPD subtract UNXLINKED_ATOMS UNXLINKED_TMC 
 
-
-print "Number of atoms in TMCs group: $(count(UNXLINKED_TMC))"
-delete_atoms overlap 1.0 UNXLINKED_TMC all mol yes
+print "Number of atoms in MPDs group: $(count(UNXLINKED_MPD))"
+delete_atoms overlap 1.0 UNXLINKED_MPD all mol yes
 fix 1 all nve
 run 0
 unfix 1
-if "$(atoms) == ${atom_count}" then "jump SELF tmc_pack_break_2"
+if "$(atoms) == ${atom_count}" then "jump SELF MPD_pack_break"
 next pp
-jump SELF tmc_pack_loop_2
+jump SELF MPD_pack_loop
 
-label tmc_pack_break_2
+label MPD_pack_break
 variable pp delete
 reset_atoms id
 

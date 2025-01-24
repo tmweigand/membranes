@@ -132,7 +132,7 @@ variable max_bond_distance equal 5.0
 variable bond_frequency equal 50
 
 if "${approach_attempt} > 1" then &
-  "variable max_bond_distance equal $(v_max_bond_distance + 0.25*v_approach_attempt)"
+  "variable max_bond_distance equal $(v_max_bond_distance + 1*v_approach_attempt)"
 
 # Define reaction 
 fix PArxn all bond/react stabilization yes statted_grp .03 &
