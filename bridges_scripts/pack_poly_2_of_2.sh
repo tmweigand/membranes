@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=64x_2_of_2
-#SBATCH --output=lammps_output.out
-#SBATCH --error=lammps_error.err
+#SBATCH --output=poly_2_of_2_output_%j.out
+#SBATCH --error=poly_2_of_2_error_%j.err
 #SBATCH --nodes=4
 #SBATCH --ntasks-per-node=128
 #SBATCH --time=48:00:00

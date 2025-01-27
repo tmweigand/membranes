@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=equilibration
-#SBATCH --output=equil_output.out
-#SBATCH --error=equil_error.err
+#SBATCH --output=equil_output_%j.out
+#SBATCH --error=equil_error_%j.err
 #SBATCH --nodes=4
 #SBATCH --ntasks-per-node=128
 #SBATCH --time=48:00:00
