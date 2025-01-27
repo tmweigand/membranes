@@ -1,0 +1,54 @@
+# Delete MPD
+delete_atoms group UNXLINKED_MPD
+
+# Refresh - just in case
+group chlorine delete
+group XLINKED_ATOMS delete
+group UNXLINKED_ATOMS delete
+group UNXLINKED_TMC delete
+group UNXLINKED_MPD delete
+
+
+# Add in new MPD molecules 
+label MPD_pack_loop
+variable pp loop 1000
+variable MPD_mol_count_to_add equal (${atom_count}-$(atoms))/16
+print "MPD molecules needed to be added ${MPD_mol_count_to_add} Loop ${pp}"
+create_atoms 0 box subset ${MPD_mol_count_to_add} $(5221*v_pp*v_rand) mol MPDmol 325132
+
+group chlorine type 18
+group XLINKED_ATOMS variable atom_charge_xlinked
+group XLINKED_ATOMS include molecule
+group UNXLINKED_ATOMS subtract all XLINKED_ATOMS
+group UNXLINKED_TMC intersect UNXLINKED_ATOMS chlorine
+group UNXLINKED_TMC include molecule
+group UNXLINKED_MPD subtract UNXLINKED_ATOMS UNXLINKED_TMC 
+
+print "Number of atoms in MPDs group: $(count(UNXLINKED_MPD))"
+delete_atoms overlap 1.0 UNXLINKED_MPD all mol yes
+fix 1 all nve
+run 0
+unfix 1
+if "$(atoms) == ${atom_count}" then "jump SELF MPD_pack_break"
+next pp
+jump SELF MPD_pack_loop
+
+label MPD_pack_break
+variable pp delete
+reset_atoms id
+
+# Minimize after add TMC Molecules 
+dielectric       1.0
+neighbor         2.0 bin
+neigh_modify     delay 0 every 1 check yes
+timestep         10.0
+run_style        verlet
+# Minimization Step
+min_style        sd
+minimize         1.0e-5 1.0e-5 10000 100000
+min_style        cg
+min_modify       line quadratic
+minimize         1.0e-8 1.0e-8 10000 100000
+
+# Reset the timestep
+timestep 1.0
