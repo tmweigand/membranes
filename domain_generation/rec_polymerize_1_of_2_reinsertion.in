@@ -24,6 +24,9 @@ improper_style   harmonic
 special_bonds    charmm
 
 
+variable restart_value equal 40000
+
+
 # Set up domain size
 variable BOXSIZE_X equal 90*${mult}^(1/3)
 variable BOXSIZE_Y equal 90*${mult}^(1/3)
@@ -121,7 +124,7 @@ fix bond_tracking all print 1 "Bonds Approach Count Iteration Count " file itera
 
 
 # Set the maximum number of approaches we are going to use
-variable num_approaches equal 5 
+variable num_approaches equal 50
 variable approach_attempt loop $(v_num_approaches)
 
 # Label for outer loop. Here we can modify the approach 
@@ -144,13 +147,13 @@ variable inner_bond_count equal f_PArxn[1]
 thermo 0
 thermo_style custom step temp press density v_current_bond_count
 
-# Set up inner loop 
+# Set up inner loop s
 label keep_reacting
-variable loop_count equal 10
+variable loop_count equal 40
 variable inner_loop loop $(v_loop_count)
 
 
-# if "${inner_loop} > 3" then "restart 10000 restarts_polym/polym.restart" 
+restart ${restart_value} restarts_polym/polym.restart
 print "==================================Current bonds formed = ${current_bond_count} Minimum bonds desired = ${TARGET_BONDS}======================================="
 print "==================================NVT PA POLYMERIZATION RUN: 300 C==============================="
 velocity all create 300.0 $(66644*v_inner_loop*v_rand)
