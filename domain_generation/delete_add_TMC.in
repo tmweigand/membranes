@@ -10,6 +10,12 @@ group chlorine type 18
 group XLINKED_ATOMS variable atom_charge_xlinked
 group XLINKED_ATOMS include molecule
 group UNXLINKED_ATOMS subtract all XLINKED_ATOMS
+
+
+print "non-crosslinled atoms: ${current_bond_count}"
+# if "${UNXLINKED_ATOMS} == 0" then &
+
+
 group UNXLINKED_TMC intersect UNXLINKED_ATOMS chlorine
 group UNXLINKED_TMC include molecule
 group UNXLINKED_MPD subtract UNXLINKED_ATOMS UNXLINKED_TMC 
