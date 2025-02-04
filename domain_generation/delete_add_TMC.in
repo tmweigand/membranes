@@ -13,23 +13,41 @@ group UNXLINKED_ATOMS subtract all XLINKED_ATOMS
 
 
 print "non-crosslinled atoms: ${current_bond_count}"
-# if "${UNXLINKED_ATOMS} == 0" then &
+# if "${UNXLINKED_ATOMS} == 0" then & 
 
 
 group UNXLINKED_TMC intersect UNXLINKED_ATOMS chlorine
 group UNXLINKED_TMC include molecule
 group UNXLINKED_MPD subtract UNXLINKED_ATOMS UNXLINKED_TMC 
  
-variable count_UNXLINKED_TMC equal count(UNXLINKED_TMC)/18
 
-if "${count_UNXLINKED_TMC} > 0" then &
+ # Check TMC atom count
+variable count_UNXLINKED_TMC equal count(UNXLINKED_TMC)/18
+variable check_tmc_count equal $(v_count_UNXLINKED_TMC % 1)
+if "${check_tmc_count} == 0" then & 
+"print 'All good! TMC atom count is an integer'" &
+else "print ''No good! TMC atom count is NOT an integer. Using floor.'" &
+"variable count_UNXLINKED_TMC equal floor(count_UNXLINKED_TMC)"
+
+ # Check MPD atom count
+variable count_UNXLINKED_MPD equal count(UNXLINKED_MPD)/16
+variable check_mpd_count equal $(v_count_UNXLINKED_MPD % 1)
+if "${check_mpd_count} == 0" then & 
+"print 'All good! MPD atom count is an integer'" &
+else "print ''No good! MPD atom count is NOT an integer. Using floor.'" &
+"variable count_UNXLINKED_MPD equal floor(count_UNXLINKED_MPD)"
+
+
+if "(${count_UNXLINKED_MPD} == 0) && (${count_UNXLINKED_TMC} == 0)" then &
+    "print YIKES"
+
+if "${count_UNXLINKED_TMC} > 0" then & 
+    "delete_atoms group UNXLINKED_TMC" &
     "include ../../domain_generation/add_TMC.in"
 
-variable count_UNXLINKED_MPD equal count(UNXLINKED_MPD)/16
-
 if "${count_UNXLINKED_MPD} > 0" then &
+    "delete_atoms group UNXLINKED_MPD" &
     "include ../../domain_generation/add_MPD.in"
-
 
 variable atom_count delete
 variable atom_charge_xlinked delete

@@ -123,6 +123,12 @@ variable current_bond_count equal 0
 fix bond_tracking all print 1 "Bonds Approach Count Iteration Count " file iterations_bond_reinsertion.out title "" screen no
 
 
+# Monitoring of molecule size
+compute mol_chunks all chunk/atom molecule
+compute atoms_per_mol all property/chunk mol_chunks count
+compute spread all chunk/spread/atom mol_chunks c_atoms_per_mol
+dump dump_mol all custom 1000 out/tim_mol.*.out id c_mol_chunks c_spread
+
 # Set the maximum number of approaches we are going to use
 variable num_approaches equal 50
 variable approach_attempt loop $(v_num_approaches)

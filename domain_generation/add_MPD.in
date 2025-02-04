@@ -1,6 +1,3 @@
-# Delete MPD
-delete_atoms group UNXLINKED_MPD
-
 # Refresh - just in case
 group chlorine delete
 group XLINKED_ATOMS delete

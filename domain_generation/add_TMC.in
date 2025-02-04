@@ -1,6 +1,3 @@
-# Delete TMC
-delete_atoms group UNXLINKED_TMC
-
 # Refresh - just in case
 group chlorine delete
 group XLINKED_ATOMS delete
