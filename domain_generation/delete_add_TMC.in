@@ -34,7 +34,7 @@ variable count_UNXLINKED_MPD equal count(UNXLINKED_MPD)/16
 variable check_mpd_count equal $(v_count_UNXLINKED_MPD % 1)
 if "${check_mpd_count} == 0" then & 
 "print 'All good! MPD atom count is an integer'" &
-else "print ''No good! MPD atom count is NOT an integer. Using floor.'" &
+else "print 'No good! MPD atom count is NOT an integer. Using floor.'" &
 "variable count_UNXLINKED_MPD equal floor(count_UNXLINKED_MPD)"
 
 
