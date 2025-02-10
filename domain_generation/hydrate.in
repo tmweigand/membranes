@@ -19,7 +19,7 @@ special_bonds    charmm
 neigh_modify exclude type 17 17
 
 # System definition
-read_data logs/equil_polymer.lmps 
+read_data logs/equilibrated_polymer.lmps 
 
 pair_coeff 15 15 0.155865 3.178
 pair_coeff 16 16 0.00000 0.000000
@@ -208,5 +208,5 @@ fix TEMPSOLID SOLID temp/berendsen 300.0 300.0 200
 thermo_style custom step temp press v_press v_actualdensity c_totalvol
 fix FXSHAKE all shake 0.0001 20 5000 b 17 a 22 t 5
 
-run 10000000
-unfix 1
+run 100
+# unfix 1

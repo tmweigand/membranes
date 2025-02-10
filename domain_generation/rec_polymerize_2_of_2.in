@@ -2,6 +2,8 @@
 # Usage: Ensure call to LAMMPS is made from folder where data.lmps is saved, assume that reaction scripts are contained in ../../scripts from folder where data.lmps is saved.
 # Usage: Ensure command line defines -var mult, -var rand, -var xlink, and -var scale
 
+log logs/log.polymerize_2_of_2
+
 # General
 units            real
 atom_style       full
@@ -11,7 +13,6 @@ boundary         p p p
 
 
 # Styles
-log logs/log.EQ
 pair_style       lj/charmm/coul/long 7.0 9.0
 pair_modify      shift no mix sixthpower
 kspace_style     pppm 1.0e-4
@@ -23,7 +24,7 @@ improper_style   harmonic
 special_bonds    charmm
 
 # System definition
-read_data logs/polym_clean.lmps
+read_data logs/polymerize_1_of_2.lmps
 
 variable BONDFREQ equal 50
 group NUM_AMIDE type 7
@@ -110,6 +111,7 @@ group EXCESSOHCL type 11 13 18
 delete_atoms group EXCESSOHCL bond yes
 dump 4 all custom 10000 logs/OH_structure.lammpstrj id type x y z vx vy vz
 undump 4
+
 # Data file output
 reset_atoms id
-write_data logs/term_final.lmps
+write_data logs/polymerize_2_of_2.lmps

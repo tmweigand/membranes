@@ -4,7 +4,9 @@
 # Usage: Ensure command line defines -var mult, -var rand, -var xlink, and -var scale
 
 # System
-log logs/log.POLYM
+shell mkdir logs 
+log logs/log.polymerize_1_of_2_reinsertion
+
 units            real
 atom_style       full
 dimension        3
@@ -120,13 +122,15 @@ variable TARGET_BONDS equal (${MAX_BONDS}*${xlink}) #target crosslinking degree
 # inner_bound_count tracks the bond count for a specific method
 variable outer_bond_count equal 0
 variable current_bond_count equal 0
-fix bond_tracking all print 1 "Bonds Approach Count Iteration Count " file iterations_bond_reinsertion.out title "" screen no
+fix bond_tracking all print 1 "Bonds Approach Count Iteration Count " file out/iterations_bond_reinsertion.out title "" screen no
 
 
 # Monitoring of molecule size
 compute mol_chunks all chunk/atom molecule
 compute atoms_per_mol all property/chunk mol_chunks count
 compute spread all chunk/spread/atom mol_chunks c_atoms_per_mol
+
+shell mkdir out
 dump dump_mol all custom 1000 out/tim_mol.*.out id c_mol_chunks c_spread
 
 # Set the maximum number of approaches we are going to use
@@ -153,13 +157,14 @@ variable inner_bond_count equal f_PArxn[1]
 thermo 0
 thermo_style custom step temp press density v_current_bond_count
 
-# Set up inner loop s
+# Set up inner loop
 label keep_reacting
 variable loop_count equal 40
 variable inner_loop loop $(v_loop_count)
 
 
-restart ${restart_value} restarts_polym/polym.restart
+shell mkdir restarts_polymerization
+restart ${restart_value} restarts_polymerization/polymerize_1_of_2_reinsertion.restart
 print "==================================Current bonds formed = ${current_bond_count} Minimum bonds desired = ${TARGET_BONDS}======================================="
 print "==================================NVT PA POLYMERIZATION RUN: 300 C==============================="
 velocity all create 300.0 $(66644*v_inner_loop*v_rand)
@@ -214,7 +219,6 @@ else &
 
 label end_bond_forming
 print "==================================FORMING BONDS COMPLETE DONE: Total bonds formed = ${current_bond_count}============"
-print "${current_bond_count}" file PA_bonds.in
 variable  PAbonds_final equal ${current_bond_count}
 unfix PArxn
 
@@ -230,12 +234,8 @@ unfix 1
 undump 3
 
 
-# Data file output
-reset_atoms id
-write_data       logs/polym.lmps
-
 #Remove Hexane
 group HEXANE type 9 10
 delete_atoms group HEXANE
 reset_atoms id
-write_data       logs/polym_clean.lmps
+write_data       logs/polymerize_1_of_2.lmps

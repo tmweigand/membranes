@@ -7,7 +7,7 @@ boundary         p p p
 
 
 # Styles
-log logs/log.EQ
+log logs/log.equilibration
 pair_style       lj/charmm/coul/long 7.0 9.0
 pair_modify      shift no mix sixthpower
 kspace_style     pppm 1.0e-4
@@ -21,7 +21,7 @@ special_bonds    charmm
 
 
 # System definition
-read_data logs/term_final.lmps
+read_data logs/polymerize_2_of_2.lmps
 
 group EXCESSOHCL type 11 13 18
 delete_atoms group EXCESSOHCL bond yes
@@ -167,4 +167,4 @@ unfix 1
 if "${rho}<=${rhoexpt}" then &
     "jump SELF loop"
 print "Final density = ${rho}"
-write_data logs/equil_polymer.lmps
+write_data logs/equilibrated_polymer.lmps

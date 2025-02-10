@@ -27,7 +27,7 @@ def read_lammps_data(filename):
     return data
 
 
-files = glob.glob("./test_run/test_packing/out/tim_mol.*")
+files = glob.glob("./bridges_runs/xlink_95/out/tim_mol.*")
 files = sorted(files, key=get_time)
 
 time = 0
@@ -45,25 +45,32 @@ for n, file in enumerate(files):
     molecule_info[n, 1] = np.max(data[:, 1])
     molecule_info[n, 2] = np.max(data[:, 2])
 
-    bins = np.linspace(0, 7750, 250)
-
+    bins = np.linspace(0, 300, 30)
     mol_sizes = np.unique(data[:, 2], axis=0)
     plt.figure(figsize=(8, 6))
     plt.hist(mol_sizes, bins, edgecolor="black", alpha=0.7)
     plt.xlabel("Size of Molecules")
     plt.ylabel("Frequency")
-    plt.savefig(f"data_out/mol_sizes_{n}.pdf")
+    plt.savefig(f"data_out/small_mols/mol_sizes_{n}.pdf")
+    plt.close()
+
+    bins = np.linspace(0, 17500, 500)
+    plt.figure(figsize=(8, 6))
+    plt.hist(mol_sizes, bins, edgecolor="black", alpha=0.7)
+    plt.xlabel("Size of Molecules")
+    plt.ylabel("Frequency")
+    plt.savefig(f"data_out/all_mols/mol_sizes_{n}.pdf")
     plt.close()
 
 plt.figure(figsize=(8, 6))
-plt.plot(molecule_info[:, 0], molecule_info[:, 1])
+plt.semilogx(molecule_info[:, 0], molecule_info[:, 1])
 plt.xlabel("Simulation Time")
 plt.ylabel("Number of Molecules")
 plt.savefig(f"data_out/number_molecules.pdf")
 plt.close()
 
 plt.figure(figsize=(8, 6))
-plt.plot(molecule_info[:, 0], molecule_info[:, 2])
+plt.semilogx(molecule_info[:, 0], molecule_info[:, 2])
 plt.xlabel("Simulation Time")
 plt.ylabel("Max Atoms per Molecule")
 plt.savefig(f"data_out/max_atoms_in_molecule.pdf")
