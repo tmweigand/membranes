@@ -300,7 +300,7 @@ def generate_rdf(bridges):
 
     sd = initialize_domain()
 
-    membrane_atom_label_file = "rdf/atom_rdf/atom_map.txt"
+    membrane_atom_label_file = "rdf/atom_map.txt"
 
     atom_labels_to_name = pmmoto.io.data_read.read_atom_map(membrane_atom_label_file)
 
