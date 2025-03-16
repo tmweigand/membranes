@@ -6,7 +6,6 @@ import numpy as np
 import pmmoto
 import matplotlib.pyplot as plt
 import os
-import gzip
 import time
 
 
@@ -30,50 +29,6 @@ atom_id_charge_map = {
     (12, -0.5351): 15,
     (14, 0.4315): 16,
 }
-
-
-def read_lammps_atoms(input_file, label_map):
-    """
-    Read position of atoms from LAMMPS file
-    atom_map must sync with LAMMPS ID
-    """
-
-    pmmoto.io.io_utils.check_file(input_file)
-
-    if input_file.endswith(".gz"):
-        domain_file = gzip.open(input_file, "rt")
-    else:
-        domain_file = open(input_file, "r", encoding="utf-8")
-
-    lines = domain_file.readlines()
-    domain_data = np.zeros([3, 2], dtype=np.double)
-    count_atom = 0
-    for n_line, line in enumerate(lines):
-        if n_line == 1:
-            time_step = float(line)
-        elif n_line == 3:
-            num_objects = int(line)
-            atom_position = np.zeros([num_objects, 3], dtype=np.double)
-            atom_type = np.zeros(num_objects, dtype=int)
-        elif 5 <= n_line <= 7:
-            domain_data[n_line - 5, 0] = float(line.split(" ")[0])
-            domain_data[n_line - 5, 1] = float(line.split(" ")[1])
-        elif n_line >= 9:
-            split = line.split(" ")
-
-            a_type = int(split[2])
-            charge = float(split[4])
-            _type = label_map[(a_type, charge)]
-
-            atom_type[count_atom] = _type
-            for count, n in enumerate([5, 6, 7]):
-                atom_position[count_atom, count] = float(split[n])  # x,y,z,atom_id
-
-            count_atom += 1
-
-    domain_file.close()
-
-    return atom_position, atom_type, domain_data
 
 
 def gen_radii(atom_ids, value):
@@ -319,13 +274,17 @@ def generate_rdf(bridges):
             "/ocean/projects/cts200024p/rvickers/RV-P3/64x/03_90/perm_v2/pressure/pressuredata.110005000.gz"
         )
 
+        water_files.remove(
+            "/ocean/projects/cts200024p/rvickers/RV-P3/64x/03_90/perm_v2/pressure/pressuredata.99995000.gz"
+        )
+
     else:
         membrane_files = glob.glob("data/membrane_data/*")
         water_files = glob.glob("data/water_data/*")
 
     check_files(membrane_files, water_files)
 
-    num_bins = 5000
+    num_bins = 50
 
     max_radius = 2.8
 
@@ -341,16 +300,18 @@ def generate_rdf(bridges):
         zip(membrane_files, water_files)
     ):
 
+        # bins = pmmoto.domain_generation.rdf.generate_bins(radii, num_bins)
+
         if sd.rank == 0:
             iter_time = time.time()
             # print(f"Processed file {n_file} out of {len(membrane_files)}")
 
-        membrane_positions, membrane_atom_type, _ = read_lammps_atoms(
-            membrane_file, atom_id_charge_map
+        membrane_positions, membrane_atom_type, _, timestep = (
+            pmmoto.io.data_read.read_lammps_atoms(membrane_file, atom_id_charge_map)
         )
 
-        water_positions, water_atom_type, _ = pmmoto.io.data_read.read_lammps_atoms(
-            water_file
+        water_positions, water_atom_type, _, timestep_2 = (
+            pmmoto.io.data_read.read_lammps_atoms(water_file)
         )
 
         membrane_radii = gen_radii(membrane_atom_type, max_radius)
@@ -382,13 +343,17 @@ def generate_rdf(bridges):
         )
 
         if sd.rank == 0:
+            for _bin in distance_bins.rdf_bins.values():
+                print(np.max(_bin))
+
+        if sd.rank == 0:
             print(f"Processed file {n_file} in {time.time() - iter_time} seconds.")
 
-    rdf = pmmoto.domain_generation.rdf.generate_rdf(distance_bins, bins)
+    # rdf = pmmoto.domain_generation.rdf.generate_rdf(distance_bins, bins)
 
-    generate_binned_distance_plots(sd, bins, distance_bins, atom_labels_to_name)
-    generate_rdf_plots(sd, bins, rdf, atom_labels_to_name)
-    save_rdf(sd, bins, distance_bins, atom_labels_to_name)
+    # generate_binned_distance_plots(sd, bins, distance_bins, atom_labels_to_name)
+    # generate_rdf_plots(sd, bins, rdf, atom_labels_to_name)
+    # save_rdf(sd, bins, distance_bins, atom_labels_to_name)
 
 
 if __name__ == "__main__":
