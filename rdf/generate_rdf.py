@@ -214,7 +214,7 @@ def check_files(files_1, files_2):
             raise ValueError(f"These times dont match! {time_1} {time_2}")
 
 
-def save_rdf(sd, bins, rdf_bins, atom_labels_to_name):
+def save_rdf(sd, bins, rdf_bins, atom_labels_to_name, time):
     """
     Save the RDF data to files.
 
@@ -245,7 +245,7 @@ def save_rdf(sd, bins, rdf_bins, atom_labels_to_name):
             np.savetxt(
                 f"data_out/rdf_data/rdf_{atom_name}.txt",
                 data,
-                header="Distance(Å) RDF",
+                header=f"Distance(Å) RDF at {time}",
                 delimiter="\t",
                 comments="#",
             )
@@ -287,7 +287,7 @@ def generate_rdf(bridges):
 
     check_files(membrane_files, water_files)
 
-    num_bins = 50
+    num_bins = 280
 
     max_radius = 2.8
 
@@ -346,17 +346,25 @@ def generate_rdf(bridges):
         )
 
         if sd.rank == 0:
-            for _bin in distance_bins.rdf_bins.values():
-                print(np.max(_bin))
+            print(
+                f"Processed file {n_file} in {time.time() - iter_time} seconds.",
+                flush=True,
+            )
 
-        if sd.rank == 0:
-            print(f"Processed file {n_file} in {time.time() - iter_time} seconds.")
+        if n_file > 0 and n_file % 2 == 0:
+            if sd.rank == 0:
+                print(
+                    f"Saving results after {n_file} with filename {membrane_file}",
+                    flush=True,
+                )
+            rdf = pmmoto.domain_generation.rdf.generate_rdf(distance_bins, bins)
+            save_rdf(sd, bins, distance_bins, atom_labels_to_name, n_file)
 
+    # Final save and generate plots
     rdf = pmmoto.domain_generation.rdf.generate_rdf(distance_bins, bins)
-
     generate_binned_distance_plots(sd, bins, distance_bins, atom_labels_to_name)
     generate_rdf_plots(sd, bins, rdf, atom_labels_to_name)
-    save_rdf(sd, bins, distance_bins, atom_labels_to_name)
+    save_rdf(sd, bins, distance_bins, atom_labels_to_name, n_file)
 
 
 if __name__ == "__main__":
