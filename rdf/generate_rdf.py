@@ -351,7 +351,7 @@ def generate_rdf(bridges):
                 flush=True,
             )
 
-        if n_file > 0 and n_file % 2 == 0:
+        if n_file > 0 and n_file % 250 == 0:
             if sd.rank == 0:
                 print(
                     f"Saving results after {n_file} with filename {membrane_file}",
@@ -368,5 +368,5 @@ def generate_rdf(bridges):
 
 
 if __name__ == "__main__":
-    bridges = False
+    bridges = True
     generate_rdf(bridges)
