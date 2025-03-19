@@ -49,7 +49,7 @@ def generate_binned_distance_plots(sd, bins, binned_distances, atom_labels_to_na
         plt.figure(figsize=(10, 6))
 
         # Plot RDFs for each atom type
-        for label, rdf in binned_distances.items():
+        for label, rdf in binned_distances.rdf_bins.items():
             plt.plot(
                 bins.bin_centers[label],
                 rdf,
@@ -80,7 +80,7 @@ def generate_binned_distance_plots(sd, bins, binned_distances, atom_labels_to_na
         plt.close()
 
         # Also save individual plots
-        for label, rdf in binned_distances.items():
+        for label, rdf in binned_distances.rdf_bins.items():
             plt.figure(figsize=(8, 5))
             plt.plot(bins.bin_centers[label], rdf, linewidth=2, color="navy")
 
@@ -204,8 +204,11 @@ def check_files(files_1, files_2):
         raise ValueError("File lengths dont match")
 
     for f1, f2 in zip(files_1, files_2):
-        time_1 = int(f1.split(".")[-2])
-        time_2 = int(f2.split(".")[-2])
+        value = -1
+        if f1.split(".")[-1] == "gz":
+            value = -2
+        time_1 = int(f1.split(".")[value])
+        time_2 = int(f2.split(".")[value])
 
         if time_1 != time_2:
             raise ValueError(f"These times dont match! {time_1} {time_2}")
@@ -231,7 +234,7 @@ def save_rdf(sd, bins, rdf_bins, atom_labels_to_name):
         os.makedirs("data_out/rdf_data", exist_ok=True)
 
         # Save data for each atom type
-        for label, rdf in rdf_bins.items():
+        for label, rdf in rdf_bins.rdf_bins.items():
             atom_name = atom_labels_to_name[label]
             centers = bins.bin_centers[label]
 
@@ -261,10 +264,10 @@ def generate_rdf(bridges):
 
     if bridges:
         membrane_files = glob.glob(
-            "/ocean/projects/cts200024p/rvickers/RV-P3/64x/03_90/perm_v2/membrane"
+            "/ocean/projects/cts200024p/rvickers/RV-P3/64x/03_90/perm_v2/membrane/*"
         )
         water_files = glob.glob(
-            "/ocean/projects/cts200024p/rvickers/RV-P3/64x/03_90/perm_v2/pressure"
+            "/ocean/projects/cts200024p/rvickers/RV-P3/64x/03_90/perm_v2/pressure/*"
         )
 
         water_files.remove(
@@ -317,7 +320,7 @@ def generate_rdf(bridges):
         membrane_radii = gen_radii(membrane_atom_type, max_radius)
         water_radii = gen_radii(water_atom_type, max_radius)
 
-        membrane = pmmoto.domain_generation.particles.initialize_atoms(
+        membrane = pmmoto.particles.initialize_atoms(
             sd,
             membrane_positions,
             membrane_radii,
@@ -327,7 +330,7 @@ def generate_rdf(bridges):
             set_own=True,
         )
 
-        water = pmmoto.domain_generation.particles.initialize_atoms(
+        water = pmmoto.particles.initialize_atoms(
             sd,
             water_positions,
             water_radii,
@@ -349,11 +352,11 @@ def generate_rdf(bridges):
         if sd.rank == 0:
             print(f"Processed file {n_file} in {time.time() - iter_time} seconds.")
 
-    # rdf = pmmoto.domain_generation.rdf.generate_rdf(distance_bins, bins)
+    rdf = pmmoto.domain_generation.rdf.generate_rdf(distance_bins, bins)
 
-    # generate_binned_distance_plots(sd, bins, distance_bins, atom_labels_to_name)
-    # generate_rdf_plots(sd, bins, rdf, atom_labels_to_name)
-    # save_rdf(sd, bins, distance_bins, atom_labels_to_name)
+    generate_binned_distance_plots(sd, bins, distance_bins, atom_labels_to_name)
+    generate_rdf_plots(sd, bins, rdf, atom_labels_to_name)
+    save_rdf(sd, bins, distance_bins, atom_labels_to_name)
 
 
 if __name__ == "__main__":
