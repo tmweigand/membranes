@@ -300,7 +300,7 @@ def generate_rdf(bridges):
     sim_time = time.time()
 
     for n_file, (membrane_file, water_file) in enumerate(
-        zip(membrane_files, water_files)
+            zip(membrane_files[2960:], water_files[2960:])
     ):
 
         # bins = pmmoto.domain_generation.rdf.generate_bins(radii, num_bins)
@@ -347,7 +347,7 @@ def generate_rdf(bridges):
 
         if sd.rank == 0:
             print(
-                f"Processed file {n_file} in {time.time() - iter_time} seconds.",
+                f"Processed file {n_file} in {time.time() - iter_time} seconds. File {membrane_file}",
                 flush=True,
             )
 
