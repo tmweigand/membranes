@@ -4,7 +4,6 @@ import glob
 from mpi4py import MPI
 import numpy as np
 import pmmoto
-import matplotlib.pyplot as plt
 import os
 import time
 
@@ -31,152 +30,19 @@ atom_id_charge_map = {
 }
 
 
-def gen_radii(atom_ids, value):
-    radii = {}
-    for _id in atom_ids:
-        radii[_id] = value
-    return radii
-
-
-def generate_binned_distance_plots(sd, bins, binned_distances, atom_labels_to_name):
-
-    if sd.rank == 0:
-        pmmoto.io.io_utils.check_file_path("data_out/binned_distance/")
-        # Set style for publication-quality figures
-        # plt.style.use("seaborn")
-
-        # Create figure with specific size
-        plt.figure(figsize=(10, 6))
-
-        # Plot RDFs for each atom type
-        for label, rdf in binned_distances.rdf_bins.items():
-            plt.plot(
-                bins.bin_centers[label],
-                rdf,
-                label=f"Atom type {atom_labels_to_name[label]}",
-                linewidth=2,
-            )
-
-        # Customize plot
-        plt.xlabel("Distance (Å)", fontsize=12)
-        plt.ylabel("Observations", fontsize=12)
-        plt.title("Distance Observation by Atom Type", fontsize=14)
-        plt.legend(frameon=True)
-        plt.grid(True, alpha=0.3)
-
-        # Set axis limits and ticks
-        plt.xlim(left=0)
-        plt.ylim(bottom=0)
-
-        # Adjust layout to prevent label clipping
-        plt.tight_layout()
-
-        # Save figure with high DPI
-        plt.savefig(
-            f"data_out/binned_distance/distance_all_types.pdf",
-            dpi=300,
-            bbox_inches="tight",
-        )
-        plt.close()
-
-        # Also save individual plots
-        for label, rdf in binned_distances.rdf_bins.items():
-            plt.figure(figsize=(8, 5))
-            plt.plot(bins.bin_centers[label], rdf, linewidth=2, color="navy")
-
-            plt.xlabel("Distance (Å)", fontsize=12)
-            plt.ylabel("Observations", fontsize=12)
-            plt.title(
-                f"Distance Observation for Atom Type {atom_labels_to_name[label]}",
-                fontsize=14,
-            )
-            plt.grid(True, alpha=0.3)
-            plt.xlim(left=0)
-            plt.ylim(bottom=0)
-
-            plt.tight_layout()
-            plt.savefig(
-                f"data_out/binned_distance/binned_distance_{atom_labels_to_name[label]}.pdf",
-                dpi=300,
-                bbox_inches="tight",
-            )
-            plt.close()
-
-
-def generate_rdf_plots(sd, bins, rdf_bins, atom_labels_to_name):
-
-    if sd.rank == 0:
-
-        pmmoto.io.io_utils.check_file_path("data_out/rdf/")
-        # Set style for publication-quality figures
-        # plt.style.use("seaborn")
-
-        # Create figure with specific size
-        plt.figure(figsize=(10, 6))
-
-        # Plot RDFs for each atom type
-        for label, rdf in rdf_bins.items():
-            plt.plot(
-                bins.bin_centers[label],
-                rdf,
-                label=f"Atom type {atom_labels_to_name[label]}",
-                linewidth=2,
-            )
-
-        # Customize plot
-        plt.xlabel("Distance (Å)", fontsize=12)
-        plt.ylabel("Radial Distribution Function g(r)", fontsize=12)
-        plt.title("Radial Distribution Functions by Atom Type", fontsize=14)
-        plt.legend(frameon=True)
-        plt.grid(True, alpha=0.3)
-
-        # Set axis limits and ticks
-        plt.xlim(left=0)
-        plt.ylim(bottom=0)
-
-        # Adjust layout to prevent label clipping
-        plt.tight_layout()
-
-        # Save figure with high DPI
-        plt.savefig(f"data_out/rdf/rdf_all_types.pdf", dpi=300, bbox_inches="tight")
-        plt.close()
-
-        # Also save individual plots
-        for label, rdf in rdf_bins.items():
-            plt.figure(figsize=(8, 5))
-            plt.plot(bins.bin_centers[label], rdf, linewidth=2, color="navy")
-
-            plt.xlabel("Distance (Å)", fontsize=12)
-            plt.ylabel("g(r)", fontsize=12)
-            plt.title(f"RDF for Atom Type {atom_labels_to_name[label]}", fontsize=14)
-            plt.grid(True, alpha=0.3)
-            plt.xlim(left=0)
-            plt.ylim(bottom=0)
-
-            plt.tight_layout()
-            plt.savefig(
-                f"data_out/rdf/generate_rdf_{atom_labels_to_name[label]}.pdf",
-                dpi=300,
-                bbox_inches="tight",
-            )
-            plt.close()
-
-
 def initialize_domain():
-    """ """
+    """
+    Initialize the membrane domain
+    """
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
 
     # Full domain with reservoirs
     box = [
-        [0.0, 1.7576827931001799e02],
-        [0.0, 1.7576827931001799e02],
-        [-287.0, 237.0],
+        [0.0, 175.768],
+        [0.0, 175.768],
+        [-150, 175],  # Ignore water reservoirs
     ]
-
-    # ignore reservoirs
-    # Ignore water "reservoirs"
-    box[2] = [-150, 175]
 
     sd = pmmoto.initialize(
         voxels=(100, 100, 100),
@@ -191,17 +57,13 @@ def initialize_domain():
 
 def check_files(files_1, files_2):
     """
-    Make sure the files match
+    Ensure the membrane and water files match in length and timestamps.
     """
-
-    len_1 = len(files_1)
-    len_2 = len(files_2)
+    if len(files_1) != len(files_2):
+        raise ValueError("File lengths do not match.")
 
     files_1.sort()
     files_2.sort()
-
-    if len_1 != len_2:
-        raise ValueError("File lengths dont match")
 
     for f1, f2 in zip(files_1, files_2):
         value = -1
@@ -235,7 +97,7 @@ def save_rdf(sd, bins, rdf_bins, atom_labels_to_name, time):
 
         # Save data for each atom type
         for label, rdf in rdf_bins.rdf_bins.items():
-            atom_name = atom_labels_to_name[label]
+            atom_name = atom_labels_to_name[label]["label"]
             centers = bins.bin_centers[label]
 
             # Stack the data into columns
@@ -259,8 +121,14 @@ def generate_rdf(bridges):
     sd = initialize_domain()
 
     membrane_atom_label_file = "rdf/atom_map.txt"
-
     atom_labels_to_name = pmmoto.io.data_read.read_atom_map(membrane_atom_label_file)
+
+    # Collect unique elements for van der Waals
+    elements = list(
+        {atom_data["element"] for atom_data in atom_labels_to_name.values()}
+    )
+
+    uff_radii = pmmoto.particles.uff_radius(atom_names=elements)
 
     if bridges:
         membrane_files = glob.glob(
@@ -270,16 +138,15 @@ def generate_rdf(bridges):
             "/ocean/projects/cts200024p/rvickers/RV-P3/64x/03_90/perm_v2/pressure/*"
         )
 
-        water_files.remove(
-            "/ocean/projects/cts200024p/rvickers/RV-P3/64x/03_90/perm_v2/pressure/pressuredata.100000000.gz"
-        )
-        water_files.remove(
-            "/ocean/projects/cts200024p/rvickers/RV-P3/64x/03_90/perm_v2/pressure/pressuredata.110005000.gz"
-        )
-
-        water_files.remove(
-            "/ocean/projects/cts200024p/rvickers/RV-P3/64x/03_90/perm_v2/pressure/pressuredata.99995000.gz"
-        )
+        # Remove specific unwanted files
+        unwanted_files = [
+            "/ocean/projects/cts200024p/rvickers/RV-P3/64x/03_90/perm_v2/pressure/pressuredata.100000000.gz",
+            "/ocean/projects/cts200024p/rvickers/RV-P3/64x/03_90/perm_v2/pressure/pressuredata.110005000.gz",
+            "/ocean/projects/cts200024p/rvickers/RV-P3/64x/03_90/perm_v2/pressure/pressuredata.99995000.gz",
+        ]
+        for file in unwanted_files:
+            if file in water_files:
+                water_files.remove(file)
 
     else:
         membrane_files = glob.glob("data/membrane_data/*")
@@ -287,43 +154,51 @@ def generate_rdf(bridges):
 
     check_files(membrane_files, water_files)
 
-    num_bins = 280
+    num_labels = len(atom_labels_to_name)
+    num_bins = [280] * num_labels
+    water_radius = 1.4
 
-    max_radius = 2.8
+    membrane_radii = np.zeros(num_labels)
+    m_radii = {}
+    labels = np.zeros(num_labels, dtype=int)
+    names = []
+    for n, atom_data in enumerate(atom_labels_to_name.values()):
+        element = atom_data["element"]
+        element_number = pmmoto.particles.convert_atoms_elements_to_ids([element])
+        membrane_radii[n] = uff_radii[element_number[0]] + water_radius
+        m_radii[n + 1] = uff_radii[element_number[0]] + water_radius
+        labels[n] = n + 1
+        names.append(atom_data["label"])
 
-    radii = {}
-    for label in atom_labels_to_name:
-        radii[label] = max_radius
-
-    bins = pmmoto.domain_generation.rdf.generate_bins(radii, num_bins)
-
-    sim_time = time.time()
+    bins = pmmoto.analysis.bins.Bins(
+        starts=np.zeros(num_labels),
+        ends=membrane_radii,
+        num_bins=num_bins,
+        labels=labels,
+        names=names,
+    )
 
     for n_file, (membrane_file, water_file) in enumerate(
-            zip(membrane_files[2960:], water_files[2960:])
+        zip(membrane_files, water_files)
     ):
-
-        # bins = pmmoto.domain_generation.rdf.generate_bins(radii, num_bins)
 
         if sd.rank == 0:
             iter_time = time.time()
-            # print(f"Processed file {n_file} out of {len(membrane_files)}")
 
-        membrane_positions, membrane_atom_type, _, timestep = (
+        membrane_positions, membrane_atom_type, _, _ = (
             pmmoto.io.data_read.read_lammps_atoms(membrane_file, atom_id_charge_map)
         )
 
-        water_positions, water_atom_type, _, timestep_2 = (
-            pmmoto.io.data_read.read_lammps_atoms(water_file)
+        water_positions, water_atom_type, _, _ = pmmoto.io.data_read.read_lammps_atoms(
+            water_file
         )
 
-        membrane_radii = gen_radii(membrane_atom_type, max_radius)
-        water_radii = gen_radii(water_atom_type, max_radius)
+        water_radii = {15: water_radius, 16: water_radius}
 
         membrane = pmmoto.particles.initialize_atoms(
             sd,
             membrane_positions,
-            membrane_radii,
+            m_radii,
             membrane_atom_type,
             by_type=True,
             add_periodic=True,
@@ -341,7 +216,7 @@ def generate_rdf(bridges):
 
         water = water.return_list(15)
 
-        distance_bins = pmmoto.domain_generation.rdf.bin_distances(
+        pmmoto.domain_generation.rdf.bin_distances(
             subdomain=sd, probe_atom_list=water, atoms=membrane, bins=bins
         )
 
@@ -357,14 +232,10 @@ def generate_rdf(bridges):
                     f"Saving results after {n_file} with filename {membrane_file}",
                     flush=True,
                 )
-            rdf = pmmoto.domain_generation.rdf.generate_rdf(distance_bins, bins)
-            save_rdf(sd, bins, distance_bins, atom_labels_to_name, n_file)
+            bins.save_bins(sd, "data_out/bins/")
 
-    # Final save and generate plots
-    rdf = pmmoto.domain_generation.rdf.generate_rdf(distance_bins, bins)
-    generate_binned_distance_plots(sd, bins, distance_bins, atom_labels_to_name)
-    generate_rdf_plots(sd, bins, rdf, atom_labels_to_name)
-    save_rdf(sd, bins, distance_bins, atom_labels_to_name, n_file)
+    # Final save
+    bins.save_bins(sd, "data_out/bins/")
 
 
 if __name__ == "__main__":
