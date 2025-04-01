@@ -4,9 +4,8 @@ import glob
 from mpi4py import MPI
 import numpy as np
 import pmmoto
-import os
 import time
-
+import rdf_helpers
 
 # This maps from from the lammps input file id and charge
 # to a unique id. Atom_map.txt relates ids to atom types
@@ -39,8 +38,8 @@ def initialize_domain():
 
     # Full domain with reservoirs
     box = [
-        [0.0, 175.768],
-        [0.0, 175.768],
+        [0.0, 176],
+        [0.0, 176],
         [-150, 175],  # Ignore water reservoirs
     ]
 
@@ -55,65 +54,7 @@ def initialize_domain():
     return sd
 
 
-def check_files(files_1, files_2):
-    """
-    Ensure the membrane and water files match in length and timestamps.
-    """
-    if len(files_1) != len(files_2):
-        raise ValueError("File lengths do not match.")
-
-    files_1.sort()
-    files_2.sort()
-
-    for f1, f2 in zip(files_1, files_2):
-        value = -1
-        if f1.split(".")[-1] == "gz":
-            value = -2
-        time_1 = int(f1.split(".")[value])
-        time_2 = int(f2.split(".")[value])
-
-        if time_1 != time_2:
-            raise ValueError(f"These times dont match! {time_1} {time_2}")
-
-
-def save_rdf(sd, bins, rdf_bins, atom_labels_to_name, time):
-    """
-    Save the RDF data to files.
-
-    Parameters
-    ----------
-    sd : SubDomain
-        The subdomain object containing rank information
-    bins : Bins
-        The bins object containing bin centers
-    rdf_bins : dict
-        Dictionary containing RDF values for each atom type
-    atom_labels_to_name : dict
-        Dictionary mapping atom labels to atom names
-    """
-    if sd.rank == 0:
-        # Create output directory if it doesn't exist
-        os.makedirs("data_out/rdf_data", exist_ok=True)
-
-        # Save data for each atom type
-        for label, rdf in rdf_bins.rdf_bins.items():
-            atom_name = atom_labels_to_name[label]["label"]
-            centers = bins.bin_centers[label]
-
-            # Stack the data into columns
-            data = np.column_stack((centers, rdf))
-
-            # Save with header
-            np.savetxt(
-                f"data_out/rdf_data/rdf_{atom_name}.txt",
-                data,
-                header=f"Distance(Å) RDF at {time}",
-                delimiter="\t",
-                comments="#",
-            )
-
-
-def generate_rdf(bridges):
+def generate_rdf(bridges, extended):
     """
     Test for generating a radial distribution function from LAMMPS data
     """
@@ -131,32 +72,21 @@ def generate_rdf(bridges):
     uff_radii = pmmoto.particles.uff_radius(atom_names=elements)
 
     if bridges:
-        membrane_files = glob.glob(
-            "/ocean/projects/cts200024p/rvickers/RV-P3/64x/03_90/perm_v2/membrane/*"
-        )
-        water_files = glob.glob(
-            "/ocean/projects/cts200024p/rvickers/RV-P3/64x/03_90/perm_v2/pressure/*"
-        )
-
-        # Remove specific unwanted files
-        unwanted_files = [
-            "/ocean/projects/cts200024p/rvickers/RV-P3/64x/03_90/perm_v2/pressure/pressuredata.100000000.gz",
-            "/ocean/projects/cts200024p/rvickers/RV-P3/64x/03_90/perm_v2/pressure/pressuredata.110005000.gz",
-            "/ocean/projects/cts200024p/rvickers/RV-P3/64x/03_90/perm_v2/pressure/pressuredata.99995000.gz",
-        ]
-        for file in unwanted_files:
-            if file in water_files:
-                water_files.remove(file)
-
+        membrane_files, water_files = rdf_helpers.get_bridges_files()
     else:
         membrane_files = glob.glob("data/membrane_data/*")
         water_files = glob.glob("data/water_data/*")
 
-    check_files(membrane_files, water_files)
+    rdf_helpers.check_files(membrane_files, water_files)
 
     num_labels = len(atom_labels_to_name)
     num_bins = [280] * num_labels
+
     water_radius = 1.4
+    if extended:
+        nnn = 5
+        water_radius = water_radius * nnn
+        num_bins = [280 * nnn] * num_labels
 
     membrane_radii = np.zeros(num_labels)
     m_radii = {}
@@ -205,6 +135,8 @@ def generate_rdf(bridges):
             set_own=True,
         )
 
+        # membrane_atom_counts = membrane.get_own_count(sd, True)
+
         water = pmmoto.particles.initialize_atoms(
             sd,
             water_positions,
@@ -214,15 +146,26 @@ def generate_rdf(bridges):
             trim_within=True,
         )
 
+        # Remove the hydrogens. The oxygens are type 15
+        # labeling is so confusing here
         water = water.return_list(15)
+
+        # water_oxygen_counts = water.get_own_count(sd, True)
+
+        # volume = sd.domain.get_volume()
+
+        # density = {}
+        # for atom, count in membrane_atom_counts.items():
+        #     density[atom] = count / volume
 
         pmmoto.domain_generation.rdf.bin_distances(
             subdomain=sd, probe_atom_list=water, atoms=membrane, bins=bins
         )
 
         if sd.rank == 0:
+            _time = time.time() - iter_time
             print(
-                f"Processed file {n_file} in {time.time() - iter_time} seconds. File {membrane_file}",
+                f"Processed file {n_file} in {_time} seconds. File {membrane_file}",
                 flush=True,
             )
 
@@ -232,12 +175,19 @@ def generate_rdf(bridges):
                     f"Saving results after {n_file} with filename {membrane_file}",
                     flush=True,
                 )
-            bins.save_bins(sd, "data_out/bins/")
+            if extended:
+                bins.save_bins(sd, "data_out/bins_extended/")
+            else:
+                bins.save_bins(sd, "data_out/bins/")
 
     # Final save
-    bins.save_bins(sd, "data_out/bins/")
+    if extended:
+        bins.save_bins(sd, "data_out/bins_extended/")
+    else:
+        bins.save_bins(sd, "data_out/bins/")
 
 
 if __name__ == "__main__":
     bridges = True
-    generate_rdf(bridges)
+    extended = True
+    generate_rdf(bridges, extended)
