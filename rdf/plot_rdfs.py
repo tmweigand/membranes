@@ -6,26 +6,6 @@ import pmmoto
 import matplotlib.pyplot as plt
 
 
-density = {
-    1: 0.00043010966306420854,
-    2: 0.003319592339478703,
-    3: 0.004498271614748887,
-    4: 0.003755463286713287,
-    5: 0.003015336935791481,
-    6: 0.0037503973299427844,
-    7: 0.003749702002542912,
-    8: 0.0037620192307692307,
-    9: 0.002356663223140496,
-    10: 0.005113636363636364,
-    11: 0.003735994119516847,
-    12: 0.0004311029879211697,
-    13: 0.0033264462809917354,
-    14: 0.00416828909726637,
-    15: 0.0004295136681500318,
-    16: 0.00042802368086458995,
-}
-
-
 def generate_bin_plot(bin, folder):
 
     pmmoto.io.io_utils.check_file_path(folder)
@@ -53,12 +33,40 @@ def generate_bin_plot(bin, folder):
     plt.close()
 
 
-def generate_rdf_plot(bin, rdf, folder):
+def generate_rdf_plot(bin, rdf, folder, x_line=None, y_line=None):
+    """
+    Generate and save an RDF plot.
+
+    Parameters:
+    - bin: Object containing bin information, including bin centers and name.
+    - rdf: Array-like, radial distribution function values.
+    - folder: String, directory where the plot will be saved.
+    - x_line: Float (optional), location on the x-axis to draw a vertical line.
+    """
 
     pmmoto.io.io_utils.check_file_path(folder)
 
     plt.figure(figsize=(8, 5))
-    plt.plot(bin.centers, rdf, linewidth=2, color="navy")
+    plt.plot(bin.centers, rdf, linewidth=2, color="navy", label="RDF")
+
+    # Draw vertical line if x_line is provided
+    if x_line is not None:
+        plt.axvline(
+            x=x_line,
+            color="red",
+            linestyle="--",
+            linewidth=1.5,
+            label=f"r = {x_line:.2f}",
+        )
+
+    if y_line is not None:
+        plt.axhline(
+            y=y_line,
+            color="blue",
+            linestyle="--",
+            linewidth=1.5,
+            label=f"g = {y_line:.2f}",
+        )
 
     plt.xlabel("Distance (Å)", fontsize=12)
     plt.ylabel("g(r)", fontsize=12)
@@ -67,13 +75,72 @@ def generate_rdf_plot(bin, rdf, folder):
     plt.xlim(left=0)
     plt.ylim(bottom=0)
 
+    plt.legend()
     plt.tight_layout()
+
     out_file = folder + f"bin_count_{bin.name}.pdf"
-    plt.savefig(
-        out_file,
-        dpi=300,
-        bbox_inches="tight",
-    )
+    plt.savefig(out_file, dpi=300, bbox_inches="tight")
+    plt.close()
+
+
+def generate_free_energy_plot(bin, rdf, folder, x_line=None, y_line=None):
+    """
+    Generate and save an RDF plot.
+
+    Parameters:
+    - bin: Object containing bin information, including bin centers and name.
+    - rdf: Array-like, radial distribution function values.
+    - folder: String, directory where the plot will be saved.
+    - x_line: Float (optional), location on the x-axis to draw a vertical line.
+    """
+
+    k_b = 0.0083144621
+    T = 300
+
+    with np.errstate(divide="ignore"):
+        G = -k_b * T * np.log(rdf)
+
+    # G = G / np.sum(rdf)
+
+    # Normalize to set minimum free energy to zero
+    # G -= np.nanmin(G)
+
+    pmmoto.io.io_utils.check_file_path(folder)
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(bin.centers, G, linewidth=2, color="navy", label="Simulation")
+
+    # Draw vertical line if x_line is provided
+    if x_line is not None:
+        plt.axvline(
+            x=x_line,
+            color="red",
+            linestyle="--",
+            linewidth=1.5,
+            label=f"VdW = {x_line:.2f}",
+        )
+
+    if y_line is not None:
+        plt.axhline(
+            y=y_line,
+            color="blue",
+            linestyle="--",
+            linewidth=1.5,
+            label=f"G = {y_line:.2f}",
+        )
+
+    plt.xlabel("Distance (Å)", fontsize=12)
+    plt.ylabel("G(r) kJ/mol", fontsize=12)
+    plt.title(f"Free Energy for Atom Type {bin.name}", fontsize=14)
+    plt.grid(True, alpha=0.3)
+    plt.xlim(left=0)
+    # plt.ylim(top=20)
+
+    plt.legend()
+    plt.tight_layout()
+
+    out_file = folder + f"G_{bin.name}.pdf"
+    plt.savefig(out_file, dpi=300, bbox_inches="tight")
     plt.close()
 
 
@@ -82,17 +149,27 @@ def generate_plots():
     Loop through generated rdf data for each atom and plot
     """
 
-    bin_files = glob.glob("data_out/bins_extended/*")
-    # bin_files = glob.glob("rdf/bridges_results/bins/*")
+    # bin_files = glob.glob("data_out/bins_extended/*")
+    bin_files = glob.glob("rdf/bridges_results/bins_extended/*.rdf")
+
+    atom_folder = "rdf/bridges_results/bins_extended/"
+    atom_map, _ = pmmoto.io.data_read.read_rdf(atom_folder)
 
     for bin_file in bin_files:
 
-        # Read the first two lines separately
-        with open(bin_file, "r") as f:
-            atom_type = f.readline().split(":")[-1]
-            atom_label = int(f.readline().split(":")[-1])
+        atom_type = bin_file.split("/")[-1].split(".")[0]
+        print(atom_type)
+        for key, values in atom_map.items():
+            if values["label"] == atom_type:
+                atom_label = key
 
-        bins, binned_distances = np.genfromtxt(bin_file, skip_header=2, unpack=True)
+        # Read the first two lines separately
+        # with open(bin_file, "r") as f:
+        #     atom_type = f.readline().split(":")[-1].strip()
+        #     atom_label = int(f.readline().split(":")[-1])
+
+        # bins, binned_distances = np.genfromtxt(bin_file, skip_header=2, unpack=True)
+        bins, binned_distances = np.genfromtxt(bin_file, skip_header=0, unpack=True)
 
         bin = pmmoto.analysis.bins.Bin(
             bins[0], bins[-1], len(bins), atom_type, binned_distances
@@ -101,11 +178,30 @@ def generate_plots():
         # Convert to rdf
         rdf = bin.generate_rdf()
 
-        new_rdf = rdf / density[atom_label]
+        element = atom_map[atom_label]["element"]
+        element_number = pmmoto.particles.convert_atoms_elements_to_ids(
+            atom_map[atom_label]["element"]
+        )
+
+        radii = pmmoto.particles.uff_radius(atom_names=element)
+        equil_radius = radii[element_number[0]] + 1.4
+
+        # SAve rdf files
+        data = np.column_stack((bins, rdf))
+
+        # Save with header
+        folder = "data_out/rdf_data/"
+        pmmoto.io.io_utils.check_file_path(folder)
+        out_file = folder + f"{atom_type}.rdf"
+
+        # header = f"Atom Type: {bin.name} \nAtom Label: {label}"
+        np.savetxt(out_file, data, delimiter="\t")
 
         generate_bin_plot(bin, "data_out/bin_count_plots/")
-        generate_rdf_plot(bin, rdf, "data_out/rdf_plots/")
-        generate_rdf_plot(bin, new_rdf, "data_out/new_rdf_plots/")
+        generate_rdf_plot(bin, rdf, "data_out/rdf_plots/", equil_radius)
+        generate_free_energy_plot(
+            bin, rdf, "data_out/free_energy_plots/", equil_radius, 5
+        )
 
 
 if __name__ == "__main__":

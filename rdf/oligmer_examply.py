@@ -6,6 +6,9 @@ import vtk
 from vtk.util import numpy_support
 
 
+import matplotlib.pyplot as plt
+
+
 def create_surface(data):
 
     # data = np.random.rand(30, 30, 30).astype(np.float32)  # Ensure it's float32
@@ -46,7 +49,7 @@ def create_surface(data):
     print("Marching Cubes mesh saved as 'output_mesh.stl'.")
 
 
-def oligomer():
+def oligomer_uff():
     """
     Generate nice plots to deomonstrate this work on an oligomer
     """
@@ -89,5 +92,102 @@ def oligomer():
     )
 
 
+def oligomer_rdf():
+    """
+    Generate nice plots to deomonstrate this work on an oligomer
+    """
+
+    o_coords_files = "domain_in/oligomer_coordinates.txt"
+    data = np.genfromtxt(o_coords_files, delimiter=",", dtype=str, skip_header=1)
+    oligomer_elements = data[:, 0]  # Atom names
+
+    # Differentiate atom names but location in polyamide
+    atom_species_name = data[:, 1]
+    unique_species = np.unique(atom_species_name)
+
+    atom_folder = "data_out/rdf_data/"
+    # atom_folder = "rdf/bridges_results/bins/"
+    atom_map, atom_data = pmmoto.io.data_read.read_rdf(atom_folder)
+
+    # Convert atom_map to lookup based on species name
+    atom_by_label = {
+        value["label"]: {"element": value["element"], "id": key}
+        for key, value in atom_map.items()
+    }
+
+    print(atom_by_label, unique_species)
+
+    rdf = {}
+    for label in unique_species:
+        if label == "H":
+            id = 9  # BH1
+        elif label == "O":
+            id = 8  # O_CONH
+        else:
+            id = atom_by_label[label]["id"]
+
+        rdf[label] = pmmoto.domain_generation.rdf.RDF(
+            name=label, atom_id=id, r=atom_data[id][:, 0], g=atom_data[id][:, 1]
+        )
+
+    plot_bounded_rdf = True
+    if plot_bounded_rdf:
+        folder = "data_out/bounded_rdf/"
+        pmmoto.io.io_utils.check_file_path(folder)
+        for key, _rdf in rdf.items():
+            plt.plot(_rdf.r_data, _rdf.get_G())
+            print(_rdf.name, _rdf.r_from_G(5000))
+            plt.xlabel("Distance (Å)", fontsize=12)
+            plt.ylabel("g(r)", fontsize=12)
+            plt.title(f"Bounded RDF for Atom Type {_rdf.name}", fontsize=14)
+            plt.tight_layout()
+            out_file = folder + f"{_rdf.name}.pdf"
+            plt.savefig(
+                out_file,
+                dpi=300,
+                bbox_inches="tight",
+            )
+            plt.close()
+
+    # atom_types = pmmoto.particles.convert_atoms_elements_to_ids(atom_names)
+
+    # coordinates = data[:, 2:].astype(float)  # Convert the rest to float
+
+    # box = ((-10, 30), (-10, 30), (-10, 30))
+
+    # sd = pmmoto.initialize(voxels=(500, 500, 500), box=box)
+
+    # rdf_radii = {}
+    # for key, _rdf in rdf.items():
+    #     rdf_radii[_rdf.atom_id] = _rdf.r_from_G(5000)
+
+    # print(rdf_radii)
+
+    # atom_types = []
+    # for
+
+    # print(rdf_radii)
+
+    # pm = pmmoto.domain_generation.gen_pm_atom_domain(
+    #     subdomain=sd,
+    #     atom_locations=coordinates,
+    #     atom_radii=rdf_radii,
+    #     atom_types=atom_types,
+    # )
+
+    # pores = pmmoto.filters.morphological_operators.erode(sd, pm.img, 2.8 / 2)
+    # pores2 = pmmoto.filters.morphological_operators.dilate(sd, pores, 2.8 / 2)
+
+    # create_surface(pores2)
+
+    # pmmoto.io.output.save_img_data_parallel(
+    #     "data_out/oligomer_rdf",
+    #     sd,
+    #     pm.img,
+    #     # additional_img={"erode": pores, "dilate": pores2},
+    # )
+
+
 if __name__ == "__main__":
-    oligomer()
+    # oligomer_uff()
+    oligomer_rdf()

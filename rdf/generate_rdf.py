@@ -135,7 +135,11 @@ def generate_rdf(bridges, extended):
             set_own=True,
         )
 
-        # membrane_atom_counts = membrane.get_own_count(sd, True)
+        membrane_atom_counts = membrane.get_own_count(sd, True)
+
+        _sum = 0
+        for counts in membrane_atom_counts.values():
+            _sum += counts
 
         water = pmmoto.particles.initialize_atoms(
             sd,
@@ -150,9 +154,11 @@ def generate_rdf(bridges, extended):
         # labeling is so confusing here
         water = water.return_list(15)
 
-        # water_oxygen_counts = water.get_own_count(sd, True)
+        water_oxygen_counts = water.get_own_count(sd, True)
 
-        # volume = sd.domain.get_volume()
+        volume = sd.domain.get_volume()
+
+        print(membrane_atom_counts, water_oxygen_counts, volume)  # / volume)
 
         # density = {}
         # for atom, count in membrane_atom_counts.items():
@@ -175,19 +181,19 @@ def generate_rdf(bridges, extended):
                     f"Saving results after {n_file} with filename {membrane_file}",
                     flush=True,
                 )
-            if extended:
-                bins.save_bins(sd, "data_out/bins_extended/")
-            else:
-                bins.save_bins(sd, "data_out/bins/")
+            # if extended:
+            #     bins.save_bins(sd, "data_out/bins_extended/")
+            # else:
+            #     bins.save_bins(sd, "data_out/bins/")
 
     # Final save
-    if extended:
-        bins.save_bins(sd, "data_out/bins_extended/")
-    else:
-        bins.save_bins(sd, "data_out/bins/")
+    # if extended:
+    #     bins.save_bins(sd, "data_out/bins_extended/")
+    # else:
+    #     bins.save_bins(sd, "data_out/bins/")
 
 
 if __name__ == "__main__":
-    bridges = True
+    bridges = False
     extended = True
     generate_rdf(bridges, extended)
