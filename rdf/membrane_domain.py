@@ -26,7 +26,7 @@ def initialize_domain(voxel):
         subdomains = (4, 4, 4)
     elif proc_size == 125:
         subdomains = (5, 5, 5)
-    elif proc_size == 256:
+    elif proc_size == 216:
         subdomains = (6, 6, 6)
     else:
         print("oops")

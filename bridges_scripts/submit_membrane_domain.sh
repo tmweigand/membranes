@@ -13,5 +13,5 @@ conda activate /jet/home/tweigand/my_env
 # mpirun -np 8 python rdf/membrane_domain.py
 # mpirun -np 27 python rdf/membrane_domain.py
 # mpirun -np 64 python rdf/membrane_domain.py
-mpirun -np 125 python rdf/membrane_domain.py
-mpirun -np 256 python rdf/membrane_domain.py
+# mpirun -np 125 python rdf/membrane_domain.py
+mpirun -np 216 python rdf/membrane_domain.py
