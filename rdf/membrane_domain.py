@@ -77,7 +77,7 @@ def generate_membrane_domain(subdomain, membrane_file):
         start_time = time.time()
 
     pm = pmmoto.domain_generation.gen_pm_atom_file(
-        subdomain=subdomain, lammps_file=membrane_file, atom_radii=radii, kd=True
+        subdomain=subdomain, lammps_file=membrane_file, atom_radii=radii, kd=False
     )
 
     if subdomain.rank == 0:
