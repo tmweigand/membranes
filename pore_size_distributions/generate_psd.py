@@ -6,8 +6,8 @@ import numpy as np
 import pmmoto
 import os
 import csv
-import time
 import psd_helpers
+import time
 
 
 def initialize_domain():
@@ -53,6 +53,7 @@ def generate_psd(bridges):
     Generate pore size density plots using PMMoTo.
     """
 
+    start_time = time.time()
     sd = initialize_domain()
 
     mem_radii = {}
@@ -103,6 +104,10 @@ def generate_psd(bridges):
 
         if sd.rank == 0:
             print(psd_counts)
+
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"Elapsed Simulation Time: {elapsed_time:.2f}")
 
     if sd.rank == 0:
         # Save psd_counts to csv output
