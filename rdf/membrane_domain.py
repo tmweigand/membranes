@@ -26,6 +26,8 @@ def initialize_domain(voxel):
         subdomains = (4, 4, 4)
     elif proc_size == 125:
         subdomains = (5, 5, 5)
+    elif proc_size == 256:
+        subdomains = (6, 6, 6)
     else:
         print("oops")
         subdomains = (0, 0, 0)
@@ -109,7 +111,6 @@ def generate_membrane_domain(subdomain, membrane_file):
             flush=True,
         )
         print(f"Connections: {connections}", flush=True)
-        # print(f"Simulation Time: {time.time() - start_time}")
 
     # connected_path = np.where(cc == 34, 1, 0)
 
@@ -129,7 +130,7 @@ def profile_bridges():
     """
     membrane_files, _ = rdf_helpers.get_bridges_files()
     membrane_file = membrane_files[0]
-    voxels = np.arange(1500, 3500, 500)
+    voxels = np.arange(3000, 6500, 500)
     for voxel in voxels:
         if rank == 0:
             print(
@@ -146,11 +147,11 @@ def profile_bridges():
 
 
 if __name__ == "__main__":
-    bridges = False
+    bridges = True
     if bridges:
         profile_bridges()
     else:
         membrane_files = glob.glob("data/membrane_data/*")
         membrane_file = membrane_files[0]
-        subdomain = initialize_domain(2000)
+        subdomain = initialize_domain(100)
         generate_membrane_domain(subdomain, membrane_file)
