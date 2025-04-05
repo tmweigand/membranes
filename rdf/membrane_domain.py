@@ -71,20 +71,39 @@ def generate_membrane_domain(subdomain, membrane_file):
     for atom_id, _rdf in bounded_rdf.items():
         radii[atom_id] = _rdf.interpolate_radius_from_pmf(10.0)
 
+    if subdomain.rank == 0:
+        print(f"Generating Domain...")
+        start_time = time.time()
+
     pm = pmmoto.domain_generation.gen_pm_atom_file(
-        subdomain=subdomain, lammps_file=membrane_file, atom_radii=radii
+        subdomain=subdomain, lammps_file=membrane_file, atom_radii=radii, kd=True
     )
+
+    if subdomain.rank == 0:
+        print(f"Domain Generated in { (time.time() - start_time):.2f} seconds")
+        print("Connecting Components...")
+        start_time = time.time()
 
     cc, _ = pmmoto.filters.connected_components.connect_components(
         img=pm.img, subdomain=subdomain
     )
+
+    if subdomain.rank == 0:
+        print(
+            f"Connecting Components completed in { (time.time() - start_time):.2f} seconds"
+        )
+        print("Inlet and Outlet Connected Path...")
+        start_time = time.time()
 
     connections = pmmoto.filters.connected_components.inlet_outlet_connections(
         subdomain=subdomain, labeled_img=cc
     )
 
     if subdomain.rank == 0:
-        print(f"Connections:{connections}")
+        print(
+            f"Inlet and Outlet completed in { (time.time() - start_time):.2f} seconds"
+        )
+        print(f"Connections: {connections}")
         # print(f"Simulation Time: {time.time() - start_time}")
 
     # connected_path = np.where(cc == 34, 1, 0)
@@ -115,8 +134,8 @@ def profile_bridges():
 
 if __name__ == "__main__":
 
-    profile_bridges()
-    # membrane_files = glob.glob("data/membrane_data/*")
-    # membrane_file = membrane_files[0]
-    # subdomain = initialize_domain(1200)
-    # generate_membrane_domain(subdomain, membrane_file)
+    # profile_bridges()
+    membrane_files = glob.glob("data/membrane_data/*")
+    membrane_file = membrane_files[0]
+    subdomain = initialize_domain(1200)
+    generate_membrane_domain(subdomain, membrane_file)
