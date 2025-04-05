@@ -141,6 +141,8 @@ def profile_bridges():
         generate_membrane_domain(subdomain, membrane_file)
         if rank == 0:
             print(f"Elapsed Time for {voxel} is {time.time()-start_time}", flush=True)
+            print()
+            print()
 
 
 if __name__ == "__main__":
