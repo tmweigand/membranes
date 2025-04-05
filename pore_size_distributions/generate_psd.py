@@ -106,17 +106,18 @@ def generate_psd(bridges):
 
     if sd.rank == 0:
         # Save psd_counts to csv output
-        with open("data_out/psd/psd_counts.csv", "w", encoding="utf-8") as csvfile:
-            csvfile.write("Key, Value\n")
+        z_voxels = 300
+        with open(
+            f"data_out/psd/psd_counts_{z_voxels}.csv", "w", encoding="utf-8"
+        ) as csvfile:
             for key, value in psd_counts.items():
                 csvfile.write(f"{key}, {value}\n")
 
-        z_voxels = 300
-        pmmoto.filters.porosimetry.plot_pore_size_distribution(
-            f"data_out/psd/_{z_voxels}",
-            psd_counts,
-            plot_type="cdf",
-        )
+        # pmmoto.filters.porosimetry.plot_pore_size_distribution(
+        #     "data_out/psd",
+        #     psd_counts,
+        #     plot_type="cdf",
+        # )
 
     # pmmoto.io.output.save_img_data_parallel(
     #     "data_out/psd_images_small",
