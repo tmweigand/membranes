@@ -33,7 +33,7 @@ def generate_bin_plot(bin, folder):
     plt.close()
 
 
-def generate_rdf_plot(bin, rdf, folder, x_line=None, y_line=None):
+def generate_rdf_plot(rdf, folder, x_line=None, y_line=None):
     """
     Generate and save an RDF plot.
 
@@ -47,7 +47,7 @@ def generate_rdf_plot(bin, rdf, folder, x_line=None, y_line=None):
     pmmoto.io.io_utils.check_file_path(folder)
 
     plt.figure(figsize=(8, 5))
-    plt.plot(bin.centers, rdf, linewidth=2, color="navy", label="RDF")
+    plt.plot(rdf.radii, rdf.rdf, linewidth=2, color="navy", label="RDF")
 
     # Draw vertical line if x_line is provided
     if x_line is not None:
@@ -70,7 +70,7 @@ def generate_rdf_plot(bin, rdf, folder, x_line=None, y_line=None):
 
     plt.xlabel("Distance (Å)", fontsize=12)
     plt.ylabel("g(r)", fontsize=12)
-    plt.title(f"RDF for Atom Type {bin.name}", fontsize=14)
+    plt.title(f"RDF for Atom Type {rdf.name}", fontsize=14)
     plt.grid(True, alpha=0.3)
     plt.xlim(left=0)
     plt.ylim(bottom=0)
@@ -78,12 +78,12 @@ def generate_rdf_plot(bin, rdf, folder, x_line=None, y_line=None):
     plt.legend()
     plt.tight_layout()
 
-    out_file = folder + f"bin_count_{bin.name}.pdf"
+    out_file = folder + f"bin_count_{rdf.name}.pdf"
     plt.savefig(out_file, dpi=300, bbox_inches="tight")
     plt.close()
 
 
-def generate_free_energy_plot(bin, rdf, folder, x_line=None, y_line=None):
+def generate_free_energy_plot(rdf, folder, x_line=None, y_line=None):
     """
     Generate and save an RDF plot.
 
@@ -94,21 +94,16 @@ def generate_free_energy_plot(bin, rdf, folder, x_line=None, y_line=None):
     - x_line: Float (optional), location on the x-axis to draw a vertical line.
     """
 
-    k_b = 0.0083144621
-    T = 300
-
-    with np.errstate(divide="ignore"):
-        G = -k_b * T * np.log(rdf)
-
-    # G = G / np.sum(rdf)
-
-    # Normalize to set minimum free energy to zero
-    # G -= np.nanmin(G)
-
     pmmoto.io.io_utils.check_file_path(folder)
 
     plt.figure(figsize=(8, 5))
-    plt.plot(bin.centers, G, linewidth=2, color="navy", label="Simulation")
+    plt.plot(
+        rdf.radii,
+        rdf.potential_mean_force(),
+        linewidth=2,
+        color="navy",
+        label="Simulation",
+    )
 
     # Draw vertical line if x_line is provided
     if x_line is not None:
@@ -121,17 +116,19 @@ def generate_free_energy_plot(bin, rdf, folder, x_line=None, y_line=None):
         )
 
     if y_line is not None:
+        radius = rdf.interpolate_radius_from_pmf(y_line)
+        plt.plot(radius, y_line, "o")
         plt.axhline(
             y=y_line,
             color="blue",
             linestyle="--",
             linewidth=1.5,
-            label=f"G = {y_line:.2f}",
+            label=f"G({y_line:.2f}) = {radius:.2f}",
         )
 
     plt.xlabel("Distance (Å)", fontsize=12)
     plt.ylabel("G(r) kJ/mol", fontsize=12)
-    plt.title(f"Free Energy for Atom Type {bin.name}", fontsize=14)
+    plt.title(f"Free Energy for Atom Type {rdf.name}", fontsize=14)
     plt.grid(True, alpha=0.3)
     plt.xlim(left=0)
     # plt.ylim(top=20)
@@ -139,7 +136,7 @@ def generate_free_energy_plot(bin, rdf, folder, x_line=None, y_line=None):
     plt.legend()
     plt.tight_layout()
 
-    out_file = folder + f"G_{bin.name}.pdf"
+    out_file = folder + f"G_{rdf.name}.pdf"
     plt.savefig(out_file, dpi=300, bbox_inches="tight")
     plt.close()
 
@@ -176,7 +173,22 @@ def generate_plots():
         )
 
         # Convert to rdf
-        rdf = bin.generate_rdf()
+        _rdf = bin.generate_rdf()
+
+        rdf = pmmoto.domain_generation.rdf.RDF(
+            name=bin.name,
+            atom_id=atom_label,
+            radii=bin.centers,
+            rdf=_rdf,
+        )
+
+        bounded_rdf = pmmoto.domain_generation.rdf.Bounded_RDF(
+            name=bin.name,
+            atom_id=atom_label,
+            radii=bin.centers,
+            rdf=_rdf,
+            eps=1.0e-3,
+        )
 
         element = atom_map[atom_label]["element"]
         element_number = pmmoto.particles.convert_atoms_elements_to_ids(
@@ -186,21 +198,10 @@ def generate_plots():
         radii = pmmoto.particles.uff_radius(atom_names=element)
         equil_radius = radii[element_number[0]] + 1.4
 
-        # SAve rdf files
-        data = np.column_stack((bins, rdf))
-
-        # Save with header
-        folder = "data_out/rdf_data/"
-        pmmoto.io.io_utils.check_file_path(folder)
-        out_file = folder + f"{atom_type}.rdf"
-
-        # header = f"Atom Type: {bin.name} \nAtom Label: {label}"
-        np.savetxt(out_file, data, delimiter="\t")
-
         generate_bin_plot(bin, "data_out/bin_count_plots/")
-        generate_rdf_plot(bin, rdf, "data_out/rdf_plots/", equil_radius)
+        generate_rdf_plot(rdf, "data_out/rdf_plots/", equil_radius)
         generate_free_energy_plot(
-            bin, rdf, "data_out/free_energy_plots/", equil_radius, 5
+            bounded_rdf, "data_out/bounded_free_energy_plots/", equil_radius, 5
         )
 
 
