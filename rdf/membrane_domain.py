@@ -4,16 +4,16 @@ import glob
 import numpy as np
 from mpi4py import MPI
 import pmmoto
-import matplotlib.pyplot as plt
 import rdf_helpers
 import time
+from enum import Enum
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 proc_size = comm.Get_size()
 
 
-def initialize_domain(voxel):
+def initialize_domain(voxels):
     """
     Initialize the membrane domain
     """
@@ -40,7 +40,7 @@ def initialize_domain(voxel):
     ]
 
     sd = pmmoto.initialize(
-        voxels=(voxel, voxel, voxel),
+        voxels=voxels,
         box=box,
         rank=rank,
         subdomains=subdomains,
@@ -53,14 +53,10 @@ def initialize_domain(voxel):
     return sd
 
 
-def generate_membrane_domain(subdomain, membrane_file):
+def generate_bounded_rdf():
     """
-    Test for generating a radial distribution function from LAMMPS data
+    Generate radii
     """
-
-    # membrane_atom_label_file = "rdf/atom_map.txt"
-    # atom_labels_to_name = pmmoto.io.data_read.read_atom_map(membrane_atom_label_file)
-
     atom_folder = "rdf/bridges_results/bins_extended/"
     atom_map, rdf = pmmoto.io.data_read.read_binned_distances_rdf(atom_folder)
 
@@ -70,58 +66,48 @@ def generate_membrane_domain(subdomain, membrane_file):
             _rdf, 1.0e-3
         )
 
+    return bounded_rdf
+
+
+def determine_radii(bounded_rdf, pmf_value):
+    """
+    Collect the radii given a pmf cutoff
+    """
     radii = {}
     for atom_id, _rdf in bounded_rdf.items():
-        radii[atom_id] = _rdf.interpolate_radius_from_pmf(10.0)
+        radii[atom_id] = _rdf.interpolate_radius_from_pmf(pmf_value)
 
-    if subdomain.rank == 0:
-        print(f"Generating Domain...", flush=True)
-        start_time = time.time()
+    return radii
 
+
+def generate_membrane_domain(pmf_value, subdomain, membrane_file):
+    """
+    Test for generating a radial distribution function from LAMMPS data
+    """
+    bounded_rdf = generate_bounded_rdf()
+
+    radii = determine_radii(bounded_rdf, pmf_value)
+
+    pmmoto.logger.info("Generating Porous Media.")
     pm = pmmoto.domain_generation.gen_pm_atom_file(
         subdomain=subdomain, lammps_file=membrane_file, atom_radii=radii, kd=False
     )
 
-    if subdomain.rank == 0:
-        print(
-            f"Domain Generated in { (time.time() - start_time):.2f} seconds", flush=True
-        )
-        print("Connecting Components...", flush=True)
-        start_time = time.time()
-
+    pmmoto.logger.info("Connecting Components.")
     cc, _ = pmmoto.filters.connected_components.connect_components(
         img=pm.img, subdomain=subdomain
     )
-
-    if subdomain.rank == 0:
-        print(
-            f"Connecting Components completed in { (time.time() - start_time):.2f} seconds",
-            flush=True,
-        )
-        print("Inlet and Outlet Connected Path...", flush=True)
-        start_time = time.time()
 
     connections = pmmoto.filters.connected_components.inlet_outlet_connections(
         subdomain=subdomain, labeled_img=cc
     )
 
-    if subdomain.rank == 0:
-        print(
-            f"Inlet and Outlet completed in { (time.time() - start_time):.2f} seconds",
-            flush=True,
-        )
-        print(f"Connections: {connections}", flush=True)
-
-    # connected_path = np.where(cc == 34, 1, 0)
-
-    # water_path = pmmoto.filters.morphological_operators.dilate(sd, connected_path, 1.4)
-
-    # pmmoto.io.output.save_img_data_parallel(
-    #     "data_out/membrane_domain_2",
-    #     sd,
-    #     pm.img,
-    #     additional_img={"water_path": water_path},
-    # )
+    if connections:
+        pmmoto.logger.info(f"Connections found with {pmf_value}")
+        return True
+    else:
+        pmmoto.logger.info(f"No Connections found with {pmf_value}")
+        return False
 
 
 def profile_bridges():
@@ -139,19 +125,99 @@ def profile_bridges():
             )
         start_time = time.time()
         subdomain = initialize_domain(voxel)
-        generate_membrane_domain(subdomain, membrane_file)
+        generate_membrane_domain(15, subdomain, membrane_file)
         if rank == 0:
             print(f"Elapsed Time for {voxel} is {time.time()-start_time}", flush=True)
             print()
             print()
 
 
+class Status(Enum):
+    SUCCESS = "Success"
+    LOWER_BOUND = "Lower bound is connected"
+    UPPER_BOUND = "Upper bound is not connected"
+    UNCONVERGED = "Value did not converge within maximum iterations"
+
+
+def bisection_method(
+    lower_bound,
+    upper_bound,
+    subdomain,
+    membrane_file,
+    tolerance=1e-4,
+    max_iterations=100,
+):
+
+    # Ensure the initial bounds yield a connected patrh and a not connected path
+    if not generate_membrane_domain(upper_bound, subdomain, membrane_file):
+        pmmoto.logger.error("Upper Bound must have a Connection")
+        return Status.UPPER_BOUND, None
+    if generate_membrane_domain(lower_bound, subdomain, membrane_file):
+        pmmoto.logger.error("Lower Bound must NOT have a Connection")
+        return Status.LOWER_BOUND, None
+
+    # Start the bisection loop
+    iteration = 0
+
+    while iteration < max_iterations:
+        mid_bound = (lower_bound + upper_bound) / 2
+        result = generate_membrane_domain(mid_bound, subdomain, membrane_file)
+
+        change = np.abs(mid_bound - lower_bound)
+        pmmoto.logger.info(f"Change of {change}")
+
+        # If mid_point produces a True result, stop the bisection
+        if result and change < tolerance:
+            pmmoto.logger.info("Connected path with %e" % mid_bound)
+            return Status.SUCCESS, mid_bound
+
+        # Adjust the bounds based on the result at mid_bound
+        if result:
+            upper_bound = mid_bound
+        else:
+            lower_bound = mid_bound
+
+        iteration += 1
+
+    # If we exit the loop, we have failed to find a valid bound within the tolerance
+    pmmoto.logger.error(
+        f"Failed to find a valid bound within {max_iterations} iterations"
+    )
+    return Status.UNCONVERGED, None
+
+
+# Function to write result and status to a file
+def write_to_file(filename, file_number, processed_file, sim_status, result):
+    with open(filename, "a") as f:
+        f.write(
+            f"{file_number}, File: {processed_file}, Status: {sim_status.name}, Result: {result}\n"
+        )
+
+
 if __name__ == "__main__":
+
+    # Open the file for writing, clear previous content if needed
+    if rank == 0:
+        file_name = "connected_paths.out"
+        with open(file_name, "w") as f:
+            f.write("Connection Results\n")
+
     bridges = True
+
+    # Grab Files
     if bridges:
-        profile_bridges()
+        voxels_in = (3520, 3520, 4000)
+        membrane_files, _ = rdf_helpers.get_bridges_files()
     else:
+        voxels_in = (800, 800, 800)
         membrane_files = glob.glob("data/membrane_data/*")
-        membrane_file = membrane_files[0]
-        subdomain = initialize_domain(100)
-        generate_membrane_domain(subdomain, membrane_file)
+
+    # Bounds for guesses.
+    upper_pmf_data = 17.315
+    lower_bound = 5
+
+    sd = initialize_domain(voxels_in)
+    for n_file, membrane_file in enumerate(membrane_files):
+        status, pmf = bisection_method(lower_bound, upper_pmf_data, sd, membrane_file)
+        if rank == 0:
+            write_to_file(file_name, n_file, membrane_file, status, pmf)
