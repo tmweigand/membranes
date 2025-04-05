@@ -5,7 +5,9 @@ from mpi4py import MPI
 import numpy as np
 import pmmoto
 import os
+import csv
 import time
+import psd_helpers
 
 
 def initialize_domain():
@@ -23,12 +25,12 @@ def initialize_domain():
     ]
 
     sd = pmmoto.initialize(
-        voxels=(500, 500, 500),
+        voxels=(300, 300, 300),
         box=box,
         rank=rank,
         subdomains=(2, 2, 2),
         boundary_types=((2, 2), (2, 2), (2, 2)),
-        verlet_domains=(30, 30, 30),
+        verlet_domains=(20, 20, 20),
     )
 
     return sd
@@ -65,8 +67,13 @@ def generate_psd(bridges):
     for radius in pore_size_radii:
         psd_counts[radius] = 0
 
-    membrane_files = glob.glob("data/membrane_data/*")
+    if bridges:
+        membrane_files, _ = psd_helpers.get_bridges_files()
 
+    else:
+        membrane_files = glob.glob("data/membrane_data/*")
+
+    # Just take [0] entry in membrane files to analyze one specific file
     for membrane_file in [membrane_files[0]]:
 
         membrane_positions, membrane_atom_type, _, _ = (
@@ -98,8 +105,17 @@ def generate_psd(bridges):
             print(psd_counts)
 
     if sd.rank == 0:
+        # Save psd_counts to csv output
+        with open("data_out/psd/psd_counts.csv", "w", encoding="utf-8") as csvfile:
+            csvfile.write("Key, Value\n")
+            for key, value in psd_counts.items():
+                csvfile.write(f"{key}, {value}\n")
+
+        z_voxels = 300
         pmmoto.filters.porosimetry.plot_pore_size_distribution(
-            "data_out/psd/", psd_counts
+            f"data_out/psd/_{z_voxels}",
+            psd_counts,
+            plot_type="cdf",
         )
 
     # pmmoto.io.output.save_img_data_parallel(
