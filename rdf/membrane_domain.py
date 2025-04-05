@@ -8,14 +8,15 @@ import matplotlib.pyplot as plt
 import rdf_helpers
 import time
 
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+proc_size = comm.Get_size()
+
 
 def initialize_domain(voxel):
     """
     Initialize the membrane domain
     """
-    comm = MPI.COMM_WORLD
-    rank = comm.Get_rank()
-    proc_size = comm.Get_size()
 
     if proc_size == 8:
         subdomains = (2, 2, 2)
@@ -72,7 +73,7 @@ def generate_membrane_domain(subdomain, membrane_file):
         radii[atom_id] = _rdf.interpolate_radius_from_pmf(10.0)
 
     if subdomain.rank == 0:
-        print(f"Generating Domain...")
+        print(f"Generating Domain...", flush=True)
         start_time = time.time()
 
     pm = pmmoto.domain_generation.gen_pm_atom_file(
@@ -80,8 +81,10 @@ def generate_membrane_domain(subdomain, membrane_file):
     )
 
     if subdomain.rank == 0:
-        print(f"Domain Generated in { (time.time() - start_time):.2f} seconds")
-        print("Connecting Components...")
+        print(
+            f"Domain Generated in { (time.time() - start_time):.2f} seconds", flush=True
+        )
+        print("Connecting Components...", flush=True)
         start_time = time.time()
 
     cc, _ = pmmoto.filters.connected_components.connect_components(
@@ -90,9 +93,10 @@ def generate_membrane_domain(subdomain, membrane_file):
 
     if subdomain.rank == 0:
         print(
-            f"Connecting Components completed in { (time.time() - start_time):.2f} seconds"
+            f"Connecting Components completed in { (time.time() - start_time):.2f} seconds",
+            flush=True,
         )
-        print("Inlet and Outlet Connected Path...")
+        print("Inlet and Outlet Connected Path...", flush=True)
         start_time = time.time()
 
     connections = pmmoto.filters.connected_components.inlet_outlet_connections(
@@ -101,9 +105,10 @@ def generate_membrane_domain(subdomain, membrane_file):
 
     if subdomain.rank == 0:
         print(
-            f"Inlet and Outlet completed in { (time.time() - start_time):.2f} seconds"
+            f"Inlet and Outlet completed in { (time.time() - start_time):.2f} seconds",
+            flush=True,
         )
-        print(f"Connections: {connections}")
+        print(f"Connections: {connections}", flush=True)
         # print(f"Simulation Time: {time.time() - start_time}")
 
     # connected_path = np.where(cc == 34, 1, 0)
@@ -126,10 +131,16 @@ def profile_bridges():
     membrane_file = membrane_files[0]
     voxels = np.arange(1500, 3500, 500)
     for voxel in voxels:
+        if rank == 0:
+            print(
+                f"Starting... {(voxel,voxel,voxel)}",
+                flush=True,
+            )
         start_time = time.time()
         subdomain = initialize_domain(voxel)
         generate_membrane_domain(subdomain, membrane_file)
-        print(f"Elapsed Time for {voxel} is {time.time()-start_time}")
+        if rank == 0:
+            print(f"Elapsed Time for {voxel} is {time.time()-start_time}", flush=True)
 
 
 if __name__ == "__main__":
