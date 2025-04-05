@@ -146,9 +146,11 @@ def profile_bridges():
 
 
 if __name__ == "__main__":
-
-    profile_bridges()
-    # membrane_files = glob.glob("data/membrane_data/*")
-    # membrane_file = membrane_files[0]
-    # subdomain = initialize_domain(1200)
-    # generate_membrane_domain(subdomain, membrane_file)
+    bridges = False
+    if bridges:
+        profile_bridges()
+    else:
+        membrane_files = glob.glob("data/membrane_data/*")
+        membrane_file = membrane_files[0]
+        subdomain = initialize_domain(2000)
+        generate_membrane_domain(subdomain, membrane_file)
