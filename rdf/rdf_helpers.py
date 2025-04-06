@@ -10,9 +10,6 @@ def check_files(files_1, files_2):
     if len(files_1) != len(files_2):
         raise ValueError("File lengths do not match.")
 
-    files_1.sort()
-    files_2.sort()
-
     for f1, f2 in zip(files_1, files_2):
         value = -1
         if f1.split(".")[-1] == "gz":
@@ -81,5 +78,8 @@ def get_bridges_files():
     for file in unwanted_files:
         if file in water_files:
             water_files.remove(file)
+
+    membrane_files.sort()
+    water_files.sort()
 
     return membrane_files, water_files

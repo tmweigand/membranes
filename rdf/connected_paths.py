@@ -14,72 +14,6 @@ proc_size = comm.Get_size()
 
 logger = pmmoto.logger
 
-logger.info("Im HERE")
-
-import vtk
-from vtk.util import numpy_support
-
-
-def write_pvd_file(file_name, num_ranks):
-
-    pvd_filename = file_name + "/" + file_name.split("/")[-1] + ".pvd"
-
-    with open(pvd_filename, "w") as f:
-        f.write('<?xml version="1.0"?>\n')
-        f.write('<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">\n')
-        f.write("  <Collection>\n")
-        for rank in range(num_ranks):
-            file_proc = file_name.split("/")[-1] + "_" + str(rank) + ".vtp"
-            f.write(f'    <DataSet timestep="0" part="{rank}" file="{file_proc}"/>\n')
-        f.write("  </Collection>\n")
-        f.write("</VTKFile>\n")
-
-
-def create_surface(file_name, data, subdomain):
-
-    threshold = 0.5  # Isosurface level
-
-    # Convert NumPy array to VTK image data
-    vtk_data = vtk.vtkImageData()
-    vtk_data.SetDimensions(data.shape)
-    vtk_data.SetOrigin(subdomain.get_origin())
-    vtk_data.SetSpacing(subdomain.domain.resolution)  # Adjust spacing as needed
-
-    # Convert NumPy array to VTK-compatible format
-    flat_data = data.ravel(order="F")  # VTK expects Fortran-ordering
-    vtk_array = numpy_support.numpy_to_vtk(
-        flat_data, deep=True, array_type=vtk.VTK_FLOAT
-    )
-    vtk_data.GetPointData().SetScalars(vtk_array)
-
-    # Apply Marching Cubes algorithm
-    mc = vtk.vtkMarchingCubes()
-    mc.SetInputData(vtk_data)
-    mc.SetValue(0, threshold)  # Set isosurface value
-    mc.Update()
-
-    # Apply Laplacian smoothing
-    smoother = vtk.vtkSmoothPolyDataFilter()
-    smoother.SetInputConnection(mc.GetOutputPort())
-    smoother.SetNumberOfIterations(60)  # More iterations = smoother mesh
-    smoother.SetRelaxationFactor(0.1)  # Lower values = conservative smoothing
-    smoother.FeatureEdgeSmoothingOff()  # Turn off edge preservation for a softer result
-    smoother.Update()
-
-    pmmoto.io.io_utils.check_file_path(file_name)
-    file_proc = (
-        file_name + "/" + file_name.split("/")[-1] + "_" + str(subdomain.rank) + ".vtp"
-    )
-
-    # Save the mesh as a VTP (VTK PolyData) file
-    vtp_writer = vtk.vtkXMLPolyDataWriter()
-    vtp_writer.SetFileName(file_proc)
-    vtp_writer.SetInputConnection(smoother.GetOutputPort())
-    vtp_writer.Write()
-
-    if subdomain.rank == 0:
-        write_pvd_file(file_name=file_name, num_ranks=subdomain.domain.num_subdomains)
-
 
 def initialize_domain(voxels):
     """
@@ -160,11 +94,9 @@ def generate_membrane_domain(pmf_value, subdomain, membrane_file):
         subdomain=subdomain,
         lammps_file=membrane_file,
         atom_radii=radii,
-        kd=False,
         add_periodic=True,
+        kd=False,
     )
-
-    pm_morph = pmmoto.filters.morphological_operators.dilate(subdomain, pm.img, 1.4)
 
     cc, _ = pmmoto.filters.connected_components.connect_components(
         img=pm.img, subdomain=subdomain
@@ -175,27 +107,11 @@ def generate_membrane_domain(pmf_value, subdomain, membrane_file):
     )
 
     if connections:
-        logger.info(f"Connections found! {connections}")
-
+        logger.info(f"Connections found with {pmf_value}")
+        return True
     else:
-        logger.info(f"No Connections found.")
-        return
-
-    connected = np.where(cc == 20, 1, 0)
-
-    _morph = pmmoto.filters.morphological_operators.dilate(subdomain, connected, 1.4)
-
-    # _edt = pmmoto.filters.distance.edt(_morph.astype(np.uint8), subdomain)
-
-    create_surface("data_out/pm_morph", pm_morph, subdomain)
-
-    create_surface("data_out/connected_morph", _morph, subdomain)
-
-    # pmmoto.io.output.save_img_data_parallel(
-    #     "data_out/membrane_domain",
-    #     subdomain,
-    #     pm_morph,  # additional_img={"edt": _edt}
-    # )
+        logger.info(f"No Connections found with {pmf_value}")
+        return False
 
 
 def profile_bridges():
@@ -220,9 +136,73 @@ def profile_bridges():
             print()
 
 
+class Status(Enum):
+    SUCCESS = "Success"
+    LOWER_BOUND = "Lower bound is connected"
+    UPPER_BOUND = "Upper bound is not connected"
+    UNCONVERGED = "Value did not converge within maximum iterations"
+
+
+def bisection_method(
+    lower_bound,
+    upper_bound,
+    subdomain,
+    membrane_file,
+    tolerance=1e-4,
+    max_iterations=100,
+):
+
+    # Ensure the initial bounds yield a connected patrh and a not connected path
+    if not generate_membrane_domain(upper_bound, subdomain, membrane_file):
+        return Status.UPPER_BOUND, None
+    if generate_membrane_domain(lower_bound, subdomain, membrane_file):
+        return Status.LOWER_BOUND, None
+
+    # Start the bisection loop
+    iteration = 0
+
+    while iteration < max_iterations:
+        mid_bound = (lower_bound + upper_bound) / 2
+        result = generate_membrane_domain(mid_bound, subdomain, membrane_file)
+
+        change = np.abs(mid_bound - lower_bound)
+        logger.info(f"Change of {change}")
+
+        # If mid_point produces a True result, stop the bisection
+        if result and change < tolerance:
+            logger.info("Connected path with %e" % mid_bound)
+            return Status.SUCCESS, mid_bound
+
+        # Adjust the bounds based on the result at mid_bound
+        if result:
+            upper_bound = mid_bound
+        else:
+            lower_bound = mid_bound
+
+        iteration += 1
+
+    # If we exit the loop, we have failed to find a valid bound within the tolerance
+    logger.error(f"Failed to find a valid bound within {max_iterations} iterations")
+    return Status.UNCONVERGED, None
+
+
+# Function to write result and status to a file
+def write_to_file(filename, file_number, processed_file, sim_status, result):
+    with open(filename, "a") as f:
+        f.write(
+            f"{file_number}, File: {processed_file}, Status: {sim_status.name}, Result: {result}\n"
+        )
+
+
 if __name__ == "__main__":
 
-    bridges = False
+    # Open the file for writing, clear previous content if needed
+    if rank == 0:
+        file_name = "connected_paths.out"
+        with open(file_name, "w") as f:
+            f.write("Connection Results\n")
+
+    bridges = True
 
     # Grab Files
     if bridges:
@@ -233,7 +213,11 @@ if __name__ == "__main__":
         membrane_files = glob.glob("data/membrane_data/*")
 
     # Bounds for guesses.
-    sd = initialize_domain(voxels_in)
-    _membrane_file = membrane_files[1]
     upper_pmf_data = 17.315
-    generate_membrane_domain(upper_pmf_data, sd, _membrane_file)
+    lower_bound = 5
+
+    sd = initialize_domain(voxels_in)
+    for n_file, membrane_file in enumerate(membrane_files):
+        status, pmf = bisection_method(lower_bound, upper_pmf_data, sd, membrane_file)
+        if rank == 0:
+            write_to_file(file_name, n_file, membrane_file, status, pmf)
