@@ -14,6 +14,27 @@ proc_size = comm.Get_size()
 
 logger = pmmoto.logger
 
+# This maps from from the lammps input file id and charge
+# to a unique id. Atom_map.txt relates ids to atom types
+atom_id_charge_map = {
+    (1, 0.6797): 1,
+    (1, 0.743425): 2,
+    (3, -0.23): 3,
+    (3, -0.1956): 4,
+    (3, -0.1565): 5,
+    (3, 0.014): 6,
+    (3, 0.1716): 7,
+    (4, -0.587509): 8,
+    (5, 0.10745): 9,
+    (5, 0.131): 10,
+    (5, 0.1816): 11,
+    (7, -0.4621): 12,
+    (7, -0.398375): 13,
+    (8, 0.23105): 14,
+    (12, -0.5351): 15,
+    (14, 0.4315): 16,
+}
+
 
 def initialize_domain(voxels):
     """
@@ -94,6 +115,7 @@ def generate_membrane_domain(pmf_value, subdomain, membrane_file):
         subdomain=subdomain,
         lammps_file=membrane_file,
         atom_radii=radii,
+        type_map=atom_id_charge_map,
         add_periodic=True,
         kd=False,
     )
@@ -214,7 +236,7 @@ if __name__ == "__main__":
 
     # Bounds for guesses.
     upper_pmf_data = 17.315
-    lower_bound = 5
+    lower_bound = 1
 
     sd = initialize_domain(voxels_in)
     for n_file, membrane_file in enumerate(membrane_files):
