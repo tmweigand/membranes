@@ -14,7 +14,6 @@ proc_size = comm.Get_size()
 
 logger = pmmoto.logger
 
-logger.info("Im HERE")
 
 import vtk
 from vtk.util import numpy_support
@@ -104,7 +103,7 @@ def initialize_domain(voxels):
     box = [
         [0.0, 176],
         [0.0, 176],
-        [-100, 100],  # Ignore water reservoirs
+        [-35, 65],  # Ignore water reservoirs
     ]
 
     sd = pmmoto.initialize(
@@ -181,7 +180,7 @@ def generate_membrane_domain(pmf_value, subdomain, membrane_file):
         logger.info(f"No Connections found.")
         return
 
-    connected = np.where(cc == 20, 1, 0)
+    connected = np.where(cc == 18, 1, 0)
 
     _morph = pmmoto.filters.morphological_operators.dilate(subdomain, connected, 1.4)
 
@@ -190,6 +189,8 @@ def generate_membrane_domain(pmf_value, subdomain, membrane_file):
     create_surface("data_out/pm_morph", pm_morph, subdomain)
 
     create_surface("data_out/connected_morph", _morph, subdomain)
+
+    return _morph
 
     # pmmoto.io.output.save_img_data_parallel(
     #     "data_out/membrane_domain",
@@ -220,6 +221,50 @@ def profile_bridges():
             print()
 
 
+def save_water_locations(subdomain, water_file, img=None):
+    """
+    Save the locations of water molecules
+    """
+    water_positions, water_atom_type, _, _ = pmmoto.io.data_read.read_lammps_atoms(
+        water_file
+    )
+
+    water_radii = {15: 1.4, 16: 1.4}
+
+    water = pmmoto.particles.initialize_atoms(
+        subdomain,
+        water_positions,
+        water_radii,
+        water_atom_type,
+        by_type=True,
+        trim_within=True,
+    )
+
+    hydrogen = water.return_list(16)
+    oxygen = water.return_list(15)
+
+    save_based_on_img("data_out/water_oxygen", subdomain, img, oxygen)
+    save_based_on_img("data_out/water_hydrogen", subdomain, img, hydrogen)
+
+
+def save_based_on_img(file_name, subdomain, img, particle):
+
+    particle_array = particle.return_np_array()
+
+    particle_out = np.zeros_like(particle_array)
+    particle_out[:, 0:3] = particle_array[:, 0:3]
+
+    if img is not None:
+        for n, atom in enumerate(particle_array):
+            index = subdomain.get_img_index(atom[0:3])
+            if index and img[index] == 1:
+                particle_out[n, 3] = 1
+
+    particle_out = particle_out[particle_out[:, 3] == 1]
+
+    pmmoto.io.output.save_particle_data(file_name, subdomain, particle_out)
+
+
 if __name__ == "__main__":
 
     bridges = False
@@ -229,11 +274,14 @@ if __name__ == "__main__":
         voxels_in = (3520, 3520, 4000)
         membrane_files, _ = rdf_helpers.get_bridges_files()
     else:
-        voxels_in = (1200, 1200, 1200)
-        membrane_files = glob.glob("data/membrane_data/*")
+        voxels_in = (800, 800, 800)
+        membrane_files = glob.glob("data/membrane_data/membranedata.100020000")
+        water_files = glob.glob("data/water_data/pressuredata.100020000")
 
-    # Bounds for guesses.
     sd = initialize_domain(voxels_in)
-    _membrane_file = membrane_files[1]
+    _water_file = water_files[0]
+    _membrane_file = membrane_files[0]
+
     upper_pmf_data = 17.315
-    generate_membrane_domain(upper_pmf_data, sd, _membrane_file)
+    connect_water = generate_membrane_domain(upper_pmf_data, sd, _membrane_file)
+    save_water_locations(sd, _water_file, connect_water)
