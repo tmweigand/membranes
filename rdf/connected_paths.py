@@ -236,7 +236,7 @@ if __name__ == "__main__":
 
     # Bounds for guesses.
     upper_pmf_data = 17.315
-    lower_bound = 1
+    lower_bound = 0.095
 
     sd = initialize_domain(voxels_in)
     for n_file, membrane_file in enumerate(membrane_files):

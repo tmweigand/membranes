@@ -175,8 +175,13 @@ def determine_uff_radii():
     atom_folder = "rdf/bridges_results/bins_extended/"
     atom_map, _ = pmmoto.io.data_read.read_binned_distances_rdf(atom_folder)
     radii = {}
-    # for atom_id, _rdf in bounded_rdf.items():
-    #     radii[atom_id] = _rdf.interpolate_radius_from_pmf(pmf_value)
+    for atom_id, atom_data in atom_map.items():
+        radii[atom_id] = (
+            list(pmmoto.particles.uff_radius(atom_names=atom_data["element"]).values())[
+                0
+            ]
+            + 1.4
+        )
 
     return radii
 
@@ -198,22 +203,22 @@ def generate_membrane_domain(pmf_value, subdomain, membrane_file):
         add_periodic=True,
     )
 
-    pm_morph = pmmoto.filters.morphological_operators.dilate(subdomain, pm.img, 1.4)
+    # pm_morph = pmmoto.filters.morphological_operators.dilate(subdomain, pm.img, 1.4)
 
-    # cc, _ = pmmoto.filters.connected_components.connect_components(
-    #     img=pm.img, subdomain=subdomain
-    # )
+    cc, _ = pmmoto.filters.connected_components.connect_components(
+        img=pm.img, subdomain=subdomain
+    )
 
-    # connections = pmmoto.filters.connected_components.inlet_outlet_connections(
-    #     subdomain=subdomain, labeled_img=cc
-    # )
+    connections = pmmoto.filters.connected_components.inlet_outlet_connections(
+        subdomain=subdomain, labeled_img=cc
+    )
 
-    # if connections:
-    #     logger.info(f"Connections found! {connections}")
+    if connections:
+        logger.info(f"Connections found! {connections}")
 
-    # else:
-    #     logger.info(f"No Connections found.")
-    #     return
+    else:
+        logger.info(f"No Connections found.")
+        return
 
     # connected = np.where(cc == 18, 1, 0)
 
@@ -221,16 +226,61 @@ def generate_membrane_domain(pmf_value, subdomain, membrane_file):
 
     # _edt = pmmoto.filters.distance.edt(_morph.astype(np.uint8), subdomain)
 
-    # create_surface("data_out/pm_morph", pm_morph, subdomain)
+    # create_surface("data_out/pm_morph_uff", pm_morph, subdomain)
 
     # create_surface("data_out/connected_morph", _morph, subdomain)
 
     # return _morph
 
+    # pmmoto.io.output.save_img_data_parallel(
+    #     "data_out/membrane_domain",
+    #     subdomain,
+    #     pm_morph,  # additional_img={"edt": _edt}
+    # )
+
+
+def compare_radii(pmf_value, subdomain, membrane_file):
+    """
+    Generate plots for comparing approaches
+    """
+    bounded_rdf = generate_bounded_rdf()
+
+    rdf_radii = determine_radii(bounded_rdf, pmf_value)
+    uff_radii = determine_uff_radii()
+
+    rdf_pm = pmmoto.domain_generation.gen_pm_atom_file(
+        subdomain=subdomain,
+        lammps_file=membrane_file,
+        atom_radii=rdf_radii,
+        type_map=atom_id_charge_map,
+        kd=False,
+        add_periodic=True,
+    )
+
+    rdf_pm.img = pmmoto.filters.morphological_operators.dilate(
+        subdomain, rdf_pm.img, 1.4
+    )
+
+    uff_pm = pmmoto.domain_generation.gen_pm_atom_file(
+        subdomain=subdomain,
+        lammps_file=membrane_file,
+        atom_radii=uff_radii,
+        type_map=atom_id_charge_map,
+        kd=False,
+        add_periodic=True,
+    )
+
+    uff_pm.img = pmmoto.filters.morphological_operators.dilate(
+        subdomain, uff_pm.img, 1.4
+    )
+
+    mask = np.where((uff_pm.img == 0) & (rdf_pm.img == 1), 2, uff_pm.img)
+
     pmmoto.io.output.save_img_data_parallel(
-        "data_out/membrane_domain",
+        "data_out/membrane_domain_compare",
         subdomain,
-        pm_morph,  # additional_img={"edt": _edt}
+        rdf_pm.img,
+        additional_img={"uff": uff_pm.img, "mask": mask},
     )
 
 
@@ -309,7 +359,7 @@ if __name__ == "__main__":
         voxels_in = (3520, 3520, 4000)
         membrane_files, _ = rdf_helpers.get_bridges_files()
     else:
-        voxels_in = (800, 800, 800)
+        voxels_in = (1200, 1200, 1200)
         membrane_files = glob.glob("data/membrane_data/membranedata.100020000")
         water_files = glob.glob("data/water_data/pressuredata.100020000")
 
@@ -318,5 +368,11 @@ if __name__ == "__main__":
     _membrane_file = membrane_files[0]
 
     upper_pmf_data = 17.315
-    connect_water = generate_membrane_domain(upper_pmf_data, sd, _membrane_file)
+
+    # Determine conncetions and PLots with Water Locations
+    generate_membrane_domain(upper_pmf_data, sd, _membrane_file)
+    # connect_water = generate_membrane_domain(upper_pmf_data, sd, _membrane_file)
     # save_water_locations(sd, _water_file, connect_water)
+
+    # Plot for comparing radii from RDF and UFF
+    # compare_radii(upper_pmf_data, sd, _membrane_file)
