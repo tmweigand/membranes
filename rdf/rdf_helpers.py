@@ -1,6 +1,9 @@
 """rdf_helpers.py"""
 
+import os
 import glob
+import numpy as np
+import re
 
 
 def check_files(files_1, files_2):
@@ -79,7 +82,8 @@ def get_bridges_files():
         if file in water_files:
             water_files.remove(file)
 
-    membrane_files.sort()
-    water_files.sort()
+    # Checked and working
+    membrane_files.sort(key=lambda x: int(re.search(r"(\d+)\.gz$", x).group(1)))
+    water_files.sort(key=lambda x: int(re.search(r"(\d+)\.gz$", x).group(1)))
 
     return membrane_files, water_files

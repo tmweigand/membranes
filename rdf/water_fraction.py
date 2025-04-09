@@ -313,8 +313,13 @@ if __name__ == "__main__":
         radius, sd, _membrane_file
     )
     if sd.rank == 0:
-        ax1.plot(sd.domain.coordinates[2], porosity, "k")
-        ax1.plot(sd.domain.coordinates[2], connected_porosity, "b")
+        ax1.plot(sd.domain.coordinates[2], porosity, "k", label="Total Pore Space")
+        ax1.plot(
+            sd.domain.coordinates[2],
+            connected_porosity,
+            "b",
+            label="Connected Pore Space",
+        )
 
     water_radii = {15: 1.4, 16: 0.65}
     # water_fraction = generate_water_domain(water_radii, sd, _water_file)
@@ -323,21 +328,27 @@ if __name__ == "__main__":
     if sd.rank == 0:
         # ax1.plot(sd.domain.coordinates[2], 1 - water_fraction, label="WATER")
         # plt.legend()
+        bin_volume = 176 * 176 * water_bins.width
+        volume_water = 29.7  # Angstroms cubed
         ax1.set_ylim(bottom=0.0)
-        ax1.set_ylabel("Porosity")
-        ax2 = ax1.twinx()
-        ax2.plot(water_bins.centers, water_bins.values, "k:", label="Counts")
-
-        ax2.plot(
-            connected_water_bins.centers,
-            connected_water_bins.values,
-            "b:",
-            label="Counts",
+        ax1.set_ylabel("Volume Fraction")
+        # ax2 = ax1.twinx()
+        ax1.plot(
+            water_bins.centers,
+            water_bins.values * volume_water / bin_volume,
+            "k:",
+            label="Total Water",
         )
-        ax2.set_ylim(bottom=0.0)
-        ax2.set_ylabel("Water Counts")
-        plt.xlabel("z-coordinate (Å)")
 
+        ax1.plot(
+            connected_water_bins.centers,
+            connected_water_bins.values * volume_water / bin_volume,
+            "b:",
+            label="Connected Water",
+        )
+        ax1.set_ylim(bottom=0.0)
+        ax1.set_xlabel("z-coordinate (Å)")
+        plt.legend()
         plt.savefig(
             "data_out/water_plotsss.pdf",
             dpi=300,

@@ -32,16 +32,15 @@ if __name__ == "__main__":
     file_in = "rdf/connected_paths.out"
     results = read_connected_paths(file_in)
     radii = [entry["result"] for entry in results]
-    none_count = radii.count(None)
-    radii_clean = np.array([val for val in radii if val is not None])
 
-    print(radii_clean)
-    hist, bin_edges = np.histogram(radii_clean, bins=10)
+    print(np.average(radii), np.max(radii), np.min(radii))
+
+    hist, bin_edges = np.histogram(radii, bins=10)
     import matplotlib.pyplot as plt
 
     # Plot it
     plt.figure()
-    plt.hist(radii_clean, bins=25, edgecolor="black")
+    plt.hist(radii, bins=50, edgecolor="black")
     plt.xlabel("Potential Mean Force")
     plt.ylabel("Frequency")
     plt.title("Minimum G(r) for Connected Path (kj/mol)")

@@ -220,7 +220,7 @@ if __name__ == "__main__":
 
     # Open the file for writing, clear previous content if needed
     if rank == 0:
-        file_name = "connected_paths.out"
+        file_name = "connected_paths_2.out"
         with open(file_name, "w") as f:
             f.write("Connection Results\n")
 
