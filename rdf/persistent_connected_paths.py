@@ -145,14 +145,70 @@ def write_to_file(filename, file_number, processed_file, result):
         f.write(f"{file_number}, Last File: {processed_file},  Result: {result}\n")
 
 
+def check_persistence(
+    sd, connected_img, persistent_connected_img, n_persist, file_info=None
+):
+    """
+    Check persistence of connected paths between membrane snapshots.
+
+    Parameters
+    ----------
+    sd : SubDomain
+        The subdomain object containing rank information
+    connected_img : ndarray
+        Current membrane connectivity image
+    persistent_connected_img : ndarray
+        Previous persistent connectivity image
+    n_persist : int
+        Current persistence count
+    file_info : tuple, optional
+        Tuple containing (file_number, membrane_file, output_filename)
+
+    Returns
+    -------
+    tuple
+        (new_persistent_img, new_n_persist)
+    """
+    if persistent_connected_img is None:
+        return connected_img, n_persist
+
+    # Check intersection of current and persistent paths
+    persistent_connected_img = np.where(
+        (persistent_connected_img == 1) & (connected_img == 1), 1, 0
+    )
+
+    # Find connected components
+    cc, _ = pmmoto.filters.connected_components.connect_components(
+        img=persistent_connected_img, subdomain=sd
+    )
+
+    # Check inlet/outlet connections
+    connections = pmmoto.filters.connected_components.inlet_outlet_connections(
+        subdomain=sd, labeled_img=cc
+    )
+
+    if connections:
+        # Path persists
+        n_persist += 1
+        logger.info("Persistence %i" % n_persist)
+        return persistent_connected_img, n_persist
+    else:
+        # Path broken - log and reset
+        logger.info("Length of that Persistence %i" % n_persist)
+        if file_info and sd.rank == 0:
+            n_file, membrane_file, file_name = file_info
+            write_to_file(file_name, n_file, membrane_file, n_persist)
+        return connected_img, 1
+
+
 if __name__ == "__main__":
 
     bridges = True
 
     # Grab Files
     if bridges:
-        # voxels_in = (3520, 3520, 4000)
-        voxels_in = (3080, 3080, 4000)
+        voxels_in = (3520, 3520, 4000)
+        # voxels_in = (3080, 3080, 4000)
         membrane_files, _ = rdf_helpers.get_bridges_files()
     else:
         voxels_in = (800, 800, 800)
@@ -169,32 +225,12 @@ if __name__ == "__main__":
 
     sd = initialize_domain(voxels_in)
     n_persist = 1
+    persistent_connected_img = None
 
     for n_file, membrane_file in enumerate(membrane_files):
         connected_img = generate_membrane_domain(pmf, sd, membrane_file)
 
-        if n_file == 0 and n_persist == 1:
-            persistent_connected_img = connected_img
-        else:
-            persistent_connected_img = np.where(
-                (persistent_connected_img == 1) & (connected_img == 1), 1, 0
-            )
-
-            cc, _ = pmmoto.filters.connected_components.connect_components(
-                img=persistent_connected_img, subdomain=sd
-            )
-
-            connections = pmmoto.filters.connected_components.inlet_outlet_connections(
-                subdomain=sd, labeled_img=cc
-            )
-
-            if connections:
-                n_persist += 1
-                logger.info("Persistence %i" % n_persist)
-            else:
-                logger.info("Length fo that Persistence %i" % n_persist)
-                if sd.rank == 0:
-                    write_to_file(file_name, n_file, membrane_file, n_persist)
-
-                n_persist = 1
-                persistent_connected_img = connected_img
+        file_info = (n_file, membrane_file, file_name) if rank == 0 else None
+        persistent_connected_img, n_persist = check_persistence(
+            sd, connected_img, persistent_connected_img, n_persist, file_info
+        )
