@@ -7,8 +7,6 @@ import pmmoto
 import rdf_helpers
 import time
 from enum import Enum
-import vtk
-from vtk.util import numpy_support
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -36,67 +34,6 @@ atom_id_charge_map = {
     (12, -0.5351): 15,
     (14, 0.4315): 16,
 }
-
-
-def write_pvd_file(file_name, num_ranks):
-
-    pvd_filename = file_name + "/" + file_name.split("/")[-1] + ".pvd"
-
-    with open(pvd_filename, "w") as f:
-        f.write('<?xml version="1.0"?>\n')
-        f.write('<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">\n')
-        f.write("  <Collection>\n")
-        for rank in range(num_ranks):
-            file_proc = file_name.split("/")[-1] + "_" + str(rank) + ".vtp"
-            f.write(f'    <DataSet timestep="0" part="{rank}" file="{file_proc}"/>\n')
-        f.write("  </Collection>\n")
-        f.write("</VTKFile>\n")
-
-
-def create_surface(file_name, data, subdomain):
-
-    threshold = 0.5  # Isosurface level
-
-    # Convert NumPy array to VTK image data
-    vtk_data = vtk.vtkImageData()
-    vtk_data.SetDimensions(data.shape)
-    vtk_data.SetOrigin(subdomain.get_origin())
-    vtk_data.SetSpacing(subdomain.domain.resolution)  # Adjust spacing as needed
-
-    # Convert NumPy array to VTK-compatible format
-    flat_data = data.ravel(order="F")  # VTK expects Fortran-ordering
-    vtk_array = numpy_support.numpy_to_vtk(
-        flat_data, deep=True, array_type=vtk.VTK_FLOAT
-    )
-    vtk_data.GetPointData().SetScalars(vtk_array)
-
-    # Apply Marching Cubes algorithm
-    mc = vtk.vtkMarchingCubes()
-    mc.SetInputData(vtk_data)
-    mc.SetValue(0, threshold)  # Set isosurface value
-    mc.Update()
-
-    # Apply Laplacian smoothing
-    smoother = vtk.vtkSmoothPolyDataFilter()
-    smoother.SetInputConnection(mc.GetOutputPort())
-    smoother.SetNumberOfIterations(60)  # More iterations = smoother mesh
-    smoother.SetRelaxationFactor(0.1)  # Lower values = conservative smoothing
-    smoother.FeatureEdgeSmoothingOff()  # Turn off edge preservation for a softer result
-    smoother.Update()
-
-    pmmoto.io.io_utils.check_file_path(file_name)
-    file_proc = (
-        file_name + "/" + file_name.split("/")[-1] + "_" + str(subdomain.rank) + ".vtp"
-    )
-
-    # Save the mesh as a VTP (VTK PolyData) file
-    vtp_writer = vtk.vtkXMLPolyDataWriter()
-    vtp_writer.SetFileName(file_proc)
-    vtp_writer.SetInputConnection(smoother.GetOutputPort())
-    vtp_writer.Write()
-
-    if subdomain.rank == 0:
-        write_pvd_file(file_name=file_name, num_ranks=subdomain.domain.num_subdomains)
 
 
 def initialize_domain(voxels):
