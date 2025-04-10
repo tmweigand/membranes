@@ -5,8 +5,7 @@ import numpy as np
 from mpi4py import MPI
 import pmmoto
 import rdf_helpers
-import time
-from enum import Enum
+
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -122,15 +121,15 @@ def generate_membrane_domain(pmf_value, subdomain, membrane_file):
         kd=False,
     )
 
-    cc, _ = pmmoto.filters.connected_components.connect_components(
-        img=pm.img, subdomain=subdomain
-    )
+    cc = pmmoto.filters.connected_components.connect_components(
+        img=pm.img, subdomain=subdomain, return_label_count=False
+    ).astype(np.uint16)
 
     connections = pmmoto.filters.connected_components.inlet_outlet_connections(
         subdomain=subdomain, labeled_img=cc
     )
 
-    connected = np.where(cc == connections[0], 1, 0)
+    connected = np.where(cc == connections[0], 1, 0).astype(np.uint8)
 
     conected_morph = pmmoto.filters.morphological_operators.dilate(
         subdomain, connected, 1.4
@@ -175,12 +174,12 @@ def check_persistence(
     # Check intersection of current and persistent paths
     persistent_connected_img = np.where(
         (persistent_connected_img == 1) & (connected_img == 1), 1, 0
-    )
+    ).astype(np.uint8)
 
     # Find connected components
-    cc, _ = pmmoto.filters.connected_components.connect_components(
-        img=persistent_connected_img, subdomain=sd
-    )
+    cc = pmmoto.filters.connected_components.connect_components(
+        img=persistent_connected_img, subdomain=sd, return_label_count=False
+    ).astype(np.uint32)
 
     # Check inlet/outlet connections
     connections = pmmoto.filters.connected_components.inlet_outlet_connections(
@@ -207,8 +206,8 @@ if __name__ == "__main__":
 
     # Grab Files
     if bridges:
-        voxels_in = (3520, 3520, 4000)
-        # voxels_in = (3080, 3080, 4000)
+        # voxels_in = (3520, 3520, 4000)
+        voxels_in = (3080, 3080, 4000)
         membrane_files, _ = rdf_helpers.get_bridges_files()
     else:
         voxels_in = (800, 800, 800)
