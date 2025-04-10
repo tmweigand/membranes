@@ -151,7 +151,8 @@ if __name__ == "__main__":
 
     # Grab Files
     if bridges:
-        voxels_in = (3520, 3520, 4000)
+        # voxels_in = (3520, 3520, 4000)
+        voxels_in = (3080, 3080, 4000)
         membrane_files, _ = rdf_helpers.get_bridges_files()
     else:
         voxels_in = (800, 800, 800)
