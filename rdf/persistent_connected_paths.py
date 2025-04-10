@@ -123,7 +123,7 @@ def generate_membrane_domain(pmf_value, subdomain, membrane_file):
 
     cc = pmmoto.filters.connected_components.connect_components(
         img=pm.img, subdomain=subdomain, return_label_count=False
-    ).astype(np.uint16)
+    )
 
     connections = pmmoto.filters.connected_components.inlet_outlet_connections(
         subdomain=subdomain, labeled_img=cc
@@ -179,7 +179,7 @@ def check_persistence(
     # Find connected components
     cc = pmmoto.filters.connected_components.connect_components(
         img=persistent_connected_img, subdomain=sd, return_label_count=False
-    ).astype(np.uint32)
+    )
 
     # Check inlet/outlet connections
     connections = pmmoto.filters.connected_components.inlet_outlet_connections(
