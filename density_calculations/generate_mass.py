@@ -1,4 +1,4 @@
-"""test_generate_rdf.py"""
+"""test_generate_mass.py"""
 
 import glob
 from mpi4py import MPI
@@ -10,24 +10,19 @@ import time
 
 # This maps from from the lammps input file id and charge
 # to a unique id. Atom_map.txt relates ids to atom types
-atom_id_charge_map = {
-    (1, 0.6797): 1,
-    (1, 0.743425): 2,
-    (3, -0.23): 3,
-    (3, -0.1956): 4,
-    (3, -0.1565): 5,
-    (3, 0.014): 6,
-    (3, 0.1716): 7,
-    (4, -0.587509): 8,
-    (5, 0.10745): 9,
-    (5, 0.131): 10,
-    (5, 0.1816): 11,
-    (7, -0.4621): 12,
-    (7, -0.398375): 13,
-    (8, 0.23105): 14,
-    (12, -0.5351): 15,
-    (14, 0.4315): 16,
+# type:mass
+atom_id_mass_map = {
+    1: 12.01,
+    3: 12.01,
+    4: 16,
+    5: 1.008,
+    7: 14.01,
+    8: 1.008,
+    12: 16,
+    14: 1.008,
 }
+
+water_id_mass_map = {15: 16, 16: 1.008}
 
 
 def initialize_domain():
@@ -39,9 +34,9 @@ def initialize_domain():
 
     # Full domain with reservoirs
     box = [
-        [0.0, 175.768],
-        [0.0, 175.768],
-        [-150, 175],  # Ignore water reservoirs
+        [0.0, 176],
+        [0.0, 176],
+        [-287, 237],  # Ignore water reservoirs
     ]
 
     sd = pmmoto.initialize(
@@ -76,46 +71,9 @@ def check_files(files_1, files_2):
             raise ValueError(f"These times dont match! {time_1} {time_2}")
 
 
-def save_rdf(sd, bins, rdf_bins, atom_labels_to_name, time):
+def generate_masses(bridges):
     """
-    Save the RDF data to files.
-
-    Parameters
-    ----------
-    sd : SubDomain
-        The subdomain object containing rank information
-    bins : Bins
-        The bins object containing bin centers
-    rdf_bins : dict
-        Dictionary containing RDF values for each atom type
-    atom_labels_to_name : dict
-        Dictionary mapping atom labels to atom names
-    """
-    if sd.rank == 0:
-        # Create output directory if it doesn't exist
-        os.makedirs("data_out/rdf_data", exist_ok=True)
-
-        # Save data for each atom type
-        for label, rdf in rdf_bins.rdf_bins.items():
-            atom_name = atom_labels_to_name[label]["label"]
-            centers = bins.bin_centers[label]
-
-            # Stack the data into columns
-            data = np.column_stack((centers, rdf))
-
-            # Save with header
-            np.savetxt(
-                f"data_out/rdf_data/rdf_{atom_name}.txt",
-                data,
-                header=f"Distance(Å) RDF at {time}",
-                delimiter="\t",
-                comments="#",
-            )
-
-
-def generate_rdf(bridges):
-    """
-    Test for generating a radial distribution function from LAMMPS data
+    Generates masses.
     """
 
     sd = initialize_domain()
@@ -127,8 +85,6 @@ def generate_rdf(bridges):
     elements = list(
         {atom_data["element"] for atom_data in atom_labels_to_name.values()}
     )
-
-    uff_radii = pmmoto.particles.uff_radius(atom_names=elements)
 
     if bridges:
         membrane_files = glob.glob(
@@ -153,30 +109,21 @@ def generate_rdf(bridges):
         water_files = glob.glob("data/water_data/*")
 
     check_files(membrane_files, water_files)
+    num_bins = 500
+    start = sd.domain.box[2][0]
+    end = sd.domain.box[2][1]
 
-    num_labels = len(atom_labels_to_name)
-    num_bins = [280] * num_labels
-    water_radius = 1.4
+    # Initialize collection of bins
+    membrane_bins = pmmoto.analysis.bins.Bin(start, end, num_bins, name="membrane")
+    water_bins = pmmoto.analysis.bins.Bin(start, end, num_bins, name="water")
 
-    membrane_radii = np.zeros(num_labels)
-    m_radii = {}
-    labels = np.zeros(num_labels, dtype=int)
-    names = []
-    for n, atom_data in enumerate(atom_labels_to_name.values()):
-        element = atom_data["element"]
-        element_number = pmmoto.particles.convert_atoms_elements_to_ids([element])
-        membrane_radii[n] = uff_radii[element_number[0]] + water_radius
-        m_radii[n + 1] = uff_radii[element_number[0]] + water_radius
-        labels[n] = n + 1
-        names.append(atom_data["label"])
+    membrane_radii = {}
+    for label in atom_id_mass_map.keys():
+        membrane_radii[label] = 1e-6
 
-    bins = pmmoto.analysis.bins.Bins(
-        starts=np.zeros(num_labels),
-        ends=membrane_radii,
-        num_bins=num_bins,
-        labels=labels,
-        names=names,
-    )
+    water_radii = {}
+    for label in water_id_mass_map.keys():
+        water_radii[label] = 1e-6
 
     for n_file, (membrane_file, water_file) in enumerate(
         zip(membrane_files, water_files)
@@ -186,23 +133,32 @@ def generate_rdf(bridges):
             iter_time = time.time()
 
         membrane_positions, membrane_atom_type, _, _ = (
-            pmmoto.io.data_read.read_lammps_atoms(membrane_file, atom_id_charge_map)
+            pmmoto.io.data_read.read_lammps_atoms(membrane_file)
         )
 
         water_positions, water_atom_type, _, _ = pmmoto.io.data_read.read_lammps_atoms(
             water_file
         )
 
-        water_radii = {15: water_radius, 16: water_radius}
-
         membrane = pmmoto.particles.initialize_atoms(
             sd,
             membrane_positions,
-            m_radii,
+            membrane_radii,
             membrane_atom_type,
-            by_type=True,
-            add_periodic=True,
-            set_own=True,
+            atom_id_mass_map,
+            by_type=False,
+            trim_within=True,
+        )
+
+        coords = membrane.return_coordinates()
+        masses = membrane.return_masses()
+
+        pmmoto.analysis.bins.sum_masses(
+            coordinates=coords,
+            dimension=2,
+            bin=membrane_bins,
+            masses=masses,
+            subdomain=sd,
         )
 
         water = pmmoto.particles.initialize_atoms(
@@ -210,14 +166,20 @@ def generate_rdf(bridges):
             water_positions,
             water_radii,
             water_atom_type,
-            by_type=True,
+            water_id_mass_map,
+            by_type=False,
             trim_within=True,
         )
 
-        water = water.return_list(15)
+        coords = water.return_coordinates()
+        masses = water.return_masses()
 
-        pmmoto.domain_generation.rdf.bin_distances(
-            subdomain=sd, probe_atom_list=water, atoms=membrane, bins=bins
+        pmmoto.analysis.bins.sum_masses(
+            coordinates=coords,
+            dimension=2,
+            bin=water_bins,
+            masses=masses,
+            subdomain=sd,
         )
 
         if sd.rank == 0:
@@ -226,18 +188,20 @@ def generate_rdf(bridges):
                 flush=True,
             )
 
-        if n_file > 0 and n_file % 250 == 0:
-            if sd.rank == 0:
-                print(
-                    f"Saving results after {n_file} with filename {membrane_file}",
-                    flush=True,
-                )
-            bins.save_bins(sd, "data_out/bins/")
+            if n_file > 0 and n_file % 250 == 0:
+                if sd.rank == 0:
+                    print(
+                        f"Saving results after {n_file} with filename {membrane_file}",
+                        flush=True,
+                    )
+                membrane_bins.save_bin(sd, "data_out/membrane_bins/")
+                water_bins.save_bin(sd, "data_out/water_bins/")
 
     # Final save
-    bins.save_bins(sd, "data_out/bins/")
+    membrane_bins.save_bin(sd, "data_out/membrane_bins/")
+    water_bins.save_bin(sd, "data_out/water_bins/")
 
 
 if __name__ == "__main__":
     bridges = True
-    generate_rdf(bridges)
+    generate_masses(bridges)
