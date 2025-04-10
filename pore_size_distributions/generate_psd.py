@@ -25,7 +25,7 @@ def initialize_domain():
     ]
 
     sd = pmmoto.initialize(
-        voxels=(300, 300, 300),
+        voxels=(800, 800, 800),
         box=box,
         rank=rank,
         subdomains=(2, 2, 2),
@@ -64,7 +64,7 @@ def generate_psd(bridges):
             pmmoto.particles.uff_radius(atom_names=element).values()
         )[0]
 
-    pore_size_radii = np.linspace(1, 10, 50)
+    pore_size_radii = np.linspace(0.5, 14, 50)
 
     psd_counts = {}
     for radius in pore_size_radii:
@@ -127,12 +127,12 @@ def generate_psd(bridges):
         #     plot_type="cdf",
         # )
 
-    # pmmoto.io.output.save_img_data_parallel(
-    #     "data_out/psd_images_small",
-    #     sd,
-    #     pm.img,
-    #     additional_img={"psd": psd},
-    # )
+    pmmoto.io.output.save_img_data_parallel(
+        "data_out/psd_images_small",
+        sd,
+        pm.img,
+        additional_img={"psd": psd},
+    )
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import glob
 import numpy as np
 import pmmoto
 import matplotlib.pyplot as plt
+from typing import Literal, Dict
 
 
 def generate_plots():
@@ -33,7 +34,7 @@ def generate_plots():
     bin_area = (box[1][1] - box[1][0]) * (box[0][1] - box[0][0])
     bin_volume = (bin_width * bin_area) * (angstrom_to_cm**3)
 
-    print(bin_width, bin_area, bin_volume)
+    # print(bin_width, bin_area, bin_volume)
 
     membrane_density = membrane_density / avogadro / n_files
     water_density = water_density / avogadro / n_files
@@ -69,6 +70,41 @@ def generate_plots():
 
     # Save the figure
     plt.savefig("density_calculations/membrane_density.png")
+    plt.style.use("seaborn-v0_8-whitegrid")
+    plt.figure(figsize=(8, 5))
+    plt.xlabel("z-coordinate (Å)", fontsize=14, labelpad=20)
+    plt.xlim(-287, 237)
+    plt.xticks(fontsize=14)
+    plt.ylabel("Density (g/cm³)", fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.ylim(0, 1.4)
+    plt.title("Density Profile of Polyamide RO Membrane", fontsize=18)
+    plt.plot(
+        membrane_bins,
+        membrane_density / bin_volume,
+        color="darkgray",
+        label="Membrane",
+    )
+    plt.plot(
+        water_bins,
+        water_density / bin_volume,
+        color="red",
+        label="Water",
+    )
+    plt.plot(
+        membrane_bins,
+        membrane_density / bin_volume + water_density / bin_volume,
+        color="black",
+        label="Total",
+    )
+    plt.axvline(
+        x=-100, color="goldenrod", linestyle="--", linewidth=1.5, label="Dense Region"
+    )
+    plt.axvline(x=100, color="goldenrod", linestyle="--", linewidth=1.5)
+    plt.legend(loc="upper center", bbox_to_anchor=(0.5, -0.05), ncol=4, frameon=False)
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig("data_out/psd/density_profile.png", dpi=300)
 
 
 if __name__ == "__main__":
