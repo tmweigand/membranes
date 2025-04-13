@@ -224,14 +224,14 @@ if __name__ == "__main__":
         with open(file_name, "w") as f:
             f.write("Connection Results\n")
 
-    bridges = True
+    bridges = False
 
     # Grab Files
     if bridges:
         voxels_in = (3520, 3520, 4000)
         membrane_files, _ = rdf_helpers.get_bridges_files()
     else:
-        voxels_in = (1200, 1200, 1200)
+        voxels_in = (800, 800, 800)
         membrane_files = glob.glob("data/membrane_data/*")
 
     # Bounds for guesses.

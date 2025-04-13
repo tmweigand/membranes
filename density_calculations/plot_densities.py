@@ -40,7 +40,8 @@ def generate_plots():
     water_density = water_density / avogadro / n_files
 
     fig, ax = plt.subplots()
-    fig.set_size_inches(10, 4)
+    fig.set_figwidth(9)
+    fig.set_figheight(5)
 
     ax.plot(
         membrane_bins,
@@ -51,60 +52,33 @@ def generate_plots():
     ax.plot(membrane_bins, membrane_density / bin_volume, color="0.5", label="Membrane")
     ax.plot(water_bins, water_density / bin_volume, "blue", label="Water")
 
-    ax.set_xlabel("z-coordinate (Å)")
-    ax.set_ylabel("Density (g/cm$^3$)")
+    plt.xticks(fontsize=18)
+    plt.yticks(fontsize=18)
+
+    ax.set_xlabel("z-coordinate (Å)", fontsize=18)
+    ax.set_ylabel("Density (g/cm$^3$)", fontsize=18)
 
     ax.set_xlim(left=-200, right=150)
-    # ax.set_ylim(top=1.3)
+    ax.set_ylim(bottom=0.0)
 
     # Grid, legend
     ax.grid(True, linestyle=":", linewidth=1)
-    ax.legend()
+    ax.legend(loc="lower left", fontsize=18)
 
     # Add vertical lines
-    ax.axvline(x=-100, color="gold", linestyle="dashed", linewidth=2)
-    ax.axvline(x=100, color="gold", linestyle="dashed", linewidth=2)
+    ax.axvline(x=-100, color="orange", linewidth=1.5)
+    ax.axvline(x=100, color="orange", linewidth=1.5)
 
-    ax.axvline(x=-35, color="salmon", linestyle="dashed", linewidth=2)
-    ax.axvline(x=65, color="salmon", linestyle="dashed", linewidth=2)
+    # ax.axvline(x=-35, color="salmon", linestyle="dashed", linewidth=2)
+    # ax.axvline(x=65, color="salmon", linestyle="dashed", linewidth=2)
 
     # Save the figure
-    plt.savefig("density_calculations/membrane_density.png")
-    plt.style.use("seaborn-v0_8-whitegrid")
-    plt.figure(figsize=(8, 5))
-    plt.xlabel("z-coordinate (Å)", fontsize=14, labelpad=20)
-    plt.xlim(-287, 237)
-    plt.xticks(fontsize=14)
-    plt.ylabel("Density (g/cm³)", fontsize=14)
-    plt.yticks(fontsize=14)
-    plt.ylim(0, 1.4)
-    plt.title("Density Profile of Polyamide RO Membrane", fontsize=18)
-    plt.plot(
-        membrane_bins,
-        membrane_density / bin_volume,
-        color="darkgray",
-        label="Membrane",
+    fig.tight_layout()
+    plt.savefig(
+        "density_calculations/membrane_density.png",
+        dpi=300,
+        bbox_inches="tight",
     )
-    plt.plot(
-        water_bins,
-        water_density / bin_volume,
-        color="red",
-        label="Water",
-    )
-    plt.plot(
-        membrane_bins,
-        membrane_density / bin_volume + water_density / bin_volume,
-        color="black",
-        label="Total",
-    )
-    plt.axvline(
-        x=-100, color="goldenrod", linestyle="--", linewidth=1.5, label="Dense Region"
-    )
-    plt.axvline(x=100, color="goldenrod", linestyle="--", linewidth=1.5)
-    plt.legend(loc="upper center", bbox_to_anchor=(0.5, -0.05), ncol=4, frameon=False)
-    plt.grid(alpha=0.3)
-    plt.tight_layout()
-    plt.savefig("data_out/psd/density_profile.png", dpi=300)
 
 
 if __name__ == "__main__":

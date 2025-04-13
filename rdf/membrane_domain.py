@@ -123,8 +123,8 @@ def initialize_domain(voxels):
     box = [
         [0.0, 176],
         [0.0, 176],
-        # [-35, 65],
-        [-100, 100],
+        [-35, 65],
+        # [-100, 100],
     ]
 
     sd = pmmoto.initialize(
@@ -220,15 +220,15 @@ def generate_membrane_domain(pmf_value, subdomain, membrane_file):
         logger.info(f"No Connections found.")
         return
 
-    # connected = np.where(cc == 18, 1, 0)
+    connected = np.where(cc == connections[0], 1, 0)
 
-    # _morph = pmmoto.filters.morphological_operators.dilate(subdomain, connected, 1.4)
+    _morph = pmmoto.filters.morphological_operators.dilate(subdomain, connected, 1.4)
 
     # _edt = pmmoto.filters.distance.edt(_morph.astype(np.uint8), subdomain)
 
     # create_surface("data_out/pm_morph_uff", pm_morph, subdomain)
 
-    # create_surface("data_out/connected_morph", _morph, subdomain)
+    create_surface("data_out/connected_morph_check", _morph, subdomain)
 
     # return _morph
 
@@ -359,7 +359,7 @@ if __name__ == "__main__":
         voxels_in = (3520, 3520, 4000)
         membrane_files, _ = rdf_helpers.get_bridges_files()
     else:
-        voxels_in = (1200, 1200, 1200)
+        voxels_in = (800, 800, 800)
         membrane_files = glob.glob("data/membrane_data/membranedata.100020000")
         water_files = glob.glob("data/water_data/pressuredata.100020000")
 
@@ -367,7 +367,7 @@ if __name__ == "__main__":
     _water_file = water_files[0]
     _membrane_file = membrane_files[0]
 
-    upper_pmf_data = 17.315
+    upper_pmf_data = 3.507219619750977
 
     # Determine conncetions and PLots with Water Locations
     generate_membrane_domain(upper_pmf_data, sd, _membrane_file)

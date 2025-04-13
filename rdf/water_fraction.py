@@ -307,7 +307,7 @@ if __name__ == "__main__":
     radius = 4
 
     if sd.rank == 0:
-        fig, ax1 = plt.subplots(figsize=(8, 5))
+        fig, ax1 = plt.subplots(figsize=(10, 5))
 
     porosity, connected_porosity, connect_img = generate_membrane_domain(
         radius, sd, _membrane_file
@@ -331,24 +331,33 @@ if __name__ == "__main__":
         bin_volume = 176 * 176 * water_bins.width
         volume_water = 29.7  # Angstroms cubed
         ax1.set_ylim(bottom=0.0)
-        ax1.set_ylabel("Volume Fraction")
-        # ax2 = ax1.twinx()
+
+        ax1.set_xlabel("z-coordinate (Å)", fontsize=16)
+        ax1.set_ylabel("Volume Fraction", fontsize=16)
+
         ax1.plot(
             water_bins.centers,
             water_bins.values * volume_water / bin_volume,
-            "k:",
+            "k",
+            linestyle="dashed",
             label="Total Water",
         )
 
         ax1.plot(
             connected_water_bins.centers,
             connected_water_bins.values * volume_water / bin_volume,
-            "b:",
+            "b",
+            linestyle="dashed",
             label="Connected Water",
         )
-        ax1.set_ylim(bottom=0.0)
-        ax1.set_xlabel("z-coordinate (Å)")
-        plt.legend()
+
+        ax1.tick_params(axis="x", labelsize=16)
+        ax1.tick_params(axis="y", labelsize=16)
+
+        ax1.axvline(x=-35, color="gray", linestyle="dotted", linewidth=1.5)
+        ax1.axvline(x=60, color="gray", linestyle="dotted", linewidth=1.5)
+
+        plt.legend(loc="lower left", fontsize=12)
         plt.savefig(
             "data_out/water_plotsss.pdf",
             dpi=300,

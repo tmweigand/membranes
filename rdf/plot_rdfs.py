@@ -48,8 +48,8 @@ def generate_bin_and_rdf_plot(bin, rdf, folder):
         linewidth=2,
         label="Observation Counts",
     )
-    ax1.set_xlabel("Radial Distance (Å)", fontsize=12)
-    ax1.set_ylabel("Observation Counts (10$^6$)", fontsize=12, color=color1)
+    ax1.set_xlabel("Radial Distance (Å)", fontsize=16)
+    ax1.set_ylabel("Observation Counts (10$^6$)", fontsize=16, color=color1)
     ax1.tick_params(axis="y", labelcolor=color1)
     ax1.set_xlim(left=0)
     ax1.set_ylim(bottom=0)
@@ -59,16 +59,20 @@ def generate_bin_and_rdf_plot(bin, rdf, folder):
     ax2 = ax1.twinx()
     color2 = "darkred"
     ax2.plot(rdf.radii, rdf.rdf, color=color2, linestyle="--", linewidth=2, label="RDF")
-    ax2.set_ylabel("Radial Distribution Function", fontsize=12, color=color2)
+    ax2.set_ylabel("Radial Distribution Function", fontsize=16, color=color2)
     ax2.tick_params(axis="y", labelcolor=color2)
     ax2.set_ylim(bottom=0)
 
     # Title and layout
     plt.title(
         f"Water and {bin.name}",
-        fontsize=14,
+        fontsize=16,
     )
     fig.tight_layout()
+
+    ax1.tick_params(axis="x", labelsize=16)
+    ax1.tick_params(axis="y", labelsize=16)
+    ax2.tick_params(axis="y", labelsize=16)
 
     # Save
     out_file = folder + f"bin_count_and_rdf_{bin.name}.pdf"
@@ -173,12 +177,15 @@ def generate_free_energy_plot(rdf, folder, x_line=None, y_line=None):
         #     label=f"G({y_line:.2f}) = {radius:.2f} Å",
         # )
 
-    plt.xlabel("Radial Distance (Å)", fontsize=12)
-    plt.ylabel("G(r) (kJ/mol)", fontsize=12)
+    plt.xlabel("Radial Distance (Å)", fontsize=16)
+    plt.ylabel("G(r) (kJ/mol)", fontsize=16)
     plt.title(f"Potential of Mean Force for Water and {rdf.name}", fontsize=14)
     plt.grid(True, alpha=0.3)
     plt.xlim(left=0)
     # plt.ylim(top=20)
+
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
 
     plt.legend()
     plt.tight_layout()
