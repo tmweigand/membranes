@@ -200,6 +200,62 @@ def check_persistence(
         return connected_img, 1
 
 
+def check_persistence_random(
+    sd, connected_img, persistent_connected_img, n_persist, file_info=None
+):
+    """
+    Check persistence of connected paths between membrane snapshots.
+
+    Parameters
+    ----------
+    sd : SubDomain
+        The subdomain object containing rank information
+    connected_img : ndarray
+        Current membrane connectivity image
+    persistent_connected_img : ndarray
+        Previous persistent connectivity image
+    n_persist : int
+        Current persistence count
+    file_info : tuple, optional
+        Tuple containing (file_number, membrane_file, output_filename)
+
+    Returns
+    -------
+    tuple
+        (new_persistent_img, new_n_persist)
+    """
+    if persistent_connected_img is None:
+        return connected_img, n_persist
+
+    # Check intersection of current and persistent paths
+    persistent_connected_img = np.where(
+        (persistent_connected_img == 1) & (connected_img == 1), 1, 0
+    ).astype(np.uint8)
+
+    # Find connected components
+    cc = pmmoto.filters.connected_components.connect_components(
+        img=persistent_connected_img, subdomain=sd, return_label_count=False
+    )
+
+    # Check inlet/outlet connections
+    connections = pmmoto.filters.connected_components.inlet_outlet_connections(
+        subdomain=sd, labeled_img=cc
+    )
+
+    if connections:
+        # Path persists
+        n_persist += 1
+        logger.info("Persistence %i" % n_persist)
+        return persistent_connected_img, n_persist
+    else:
+        # Path broken - log and reset
+        logger.info("Length of that Persistence %i" % n_persist)
+        if file_info and sd.rank == 0:
+            n_file, membrane_file, file_name = file_info
+            write_to_file(file_name, n_file, membrane_file, n_persist)
+        return connected_img, 0
+
+
 if __name__ == "__main__":
 
     bridges = True
@@ -216,7 +272,7 @@ if __name__ == "__main__":
 
     # Open the file for writing, clear previous content if needed
     if rank == 0:
-        file_name = "persistent_paths.out"
+        file_name = "persistent_paths_random.out"
         with open(file_name, "w") as f:
             f.write("Persistence of Path - Time is Count \n")
 
@@ -226,10 +282,41 @@ if __name__ == "__main__":
     n_persist = 1
     persistent_connected_img = None
 
-    for n_file, membrane_file in enumerate(membrane_files):
-        connected_img = generate_membrane_domain(pmf, sd, membrane_file)
+    num_files = len(membrane_files)
+    buffer = 150
+    sequential = False
 
-        file_info = (n_file, membrane_file, file_name) if rank == 0 else None
-        persistent_connected_img, n_persist = check_persistence(
-            sd, connected_img, persistent_connected_img, n_persist, file_info
-        )
+    if sequential:
+        for n_file, membrane_file in enumerate(membrane_files):
+            connected_img = generate_membrane_domain(pmf, sd, membrane_file)
+
+            file_info = (n_file, membrane_file, file_name) if rank == 0 else None
+            persistent_connected_img, n_persist = check_persistence(
+                sd, connected_img, persistent_connected_img, n_persist, file_info
+            )
+    else:
+        for n_file in range(num_files):
+            n_persist = 1
+            persistent_connected_img = None
+
+            if rank == 0:
+                random_int = np.random.randint(0, num_files - buffer)
+            else:
+                random_int = None
+
+            # Broadcast the random number to all processes
+            random_int = comm.bcast(random_int, root=0)
+
+            membrane_file = membrane_files[random_int]
+
+            file_info = (n_file, membrane_file, file_name) if rank == 0 else None
+
+            while n_persist >= 1:
+                connected_img = generate_membrane_domain(pmf, sd, membrane_file)
+                persistent_connected_img, n_persist = check_persistence_random(
+                    sd, connected_img, persistent_connected_img, n_persist, file_info
+                )
+                random_int += 1
+                if random_int >= num_files:
+                    continue
+                membrane_file = membrane_files[random_int]
