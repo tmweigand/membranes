@@ -312,54 +312,89 @@ if __name__ == "__main__":
     porosity, connected_porosity, connect_img = generate_membrane_domain(
         radius, sd, _membrane_file
     )
+
     if sd.rank == 0:
-        ax1.plot(sd.domain.coordinates[2], porosity, "k", label="Total Pore Space")
-        ax1.plot(
-            sd.domain.coordinates[2],
-            connected_porosity,
-            "b",
-            label="Connected Pore Space",
+        data = np.column_stack((sd.domain.coordinates[2], porosity, connected_porosity))
+        np.savetxt(
+            "porosity_output.txt",
+            data,
+            fmt="%.6f",
+            delimiter="\t",
+            header="A\tB\tC",
+            comments="",
         )
+
+    # if sd.rank == 0:
+    #     ax1.plot(sd.domain.coordinates[2], porosity, "k", label="Total Pore Space")
+    #     ax1.plot(
+    #         sd.domain.coordinates[2],
+    #         connected_porosity,
+    #         "b",
+    #         label="Connected Pore Space",
+    #     )
 
     water_radii = {15: 1.4, 16: 0.65}
     # water_fraction = generate_water_domain(water_radii, sd, _water_file)
     water_bins = count_water_locations(sd, _water_file, img=None)
     connected_water_bins = count_water_locations(sd, _water_file, img=connect_img)
+
+    # if sd.rank == 0:
+    #     # ax1.plot(sd.domain.coordinates[2], 1 - water_fraction, label="WATER")
+    #     # plt.legend()
+    #     bin_volume = 176 * 176 * water_bins.width
+    #     volume_water = 29.7  # Angstroms cubed
+    #     ax1.set_ylim(bottom=0.0)
+
+    #     ax1.set_xlabel("z-coordinate (Å)", fontsize=16)
+    #     ax1.set_ylabel("Volume Fraction", fontsize=16)
+
+    #     ax1.plot(
+    #         water_bins.centers,
+    #         water_bins.values * volume_water / bin_volume,
+    #         "k",
+    #         linestyle="dashed",
+    #         label="Total Water",
+    #     )
+
+    #     ax1.plot(
+    #         connected_water_bins.centers,
+    #         connected_water_bins.values * volume_water / bin_volume,
+    #         "b",
+    #         linestyle="dashed",
+    #         label="Connected Water",
+    #     )
+
+    #     ax1.grid(True)
+
+    #     ax1.tick_params(axis="x", labelsize=16)
+    #     ax1.tick_params(axis="y", labelsize=16)
+
+    #     ax1.axvline(x=-35, color="gray", linestyle="dotted", linewidth=1.5)
+    #     ax1.axvline(x=60, color="gray", linestyle="dotted", linewidth=1.5)
+
+    #     plt.legend(loc="lower left", fontsize=12)
+    #     plt.savefig(
+    #         "data_out/water_plotsss.pdf",
+    #         dpi=300,
+    #         bbox_inches="tight",
+    #     )
+
     if sd.rank == 0:
-        # ax1.plot(sd.domain.coordinates[2], 1 - water_fraction, label="WATER")
-        # plt.legend()
         bin_volume = 176 * 176 * water_bins.width
         volume_water = 29.7  # Angstroms cubed
-        ax1.set_ylim(bottom=0.0)
 
-        ax1.set_xlabel("z-coordinate (Å)", fontsize=16)
-        ax1.set_ylabel("Volume Fraction", fontsize=16)
-
-        ax1.plot(
-            water_bins.centers,
-            water_bins.values * volume_water / bin_volume,
-            "k",
-            linestyle="dashed",
-            label="Total Water",
+        data = np.column_stack(
+            (
+                water_bins.centers,
+                water_bins.values * volume_water / bin_volume,
+                connected_water_bins.values * volume_water / bin_volume,
+            )
         )
-
-        ax1.plot(
-            connected_water_bins.centers,
-            connected_water_bins.values * volume_water / bin_volume,
-            "b",
-            linestyle="dashed",
-            label="Connected Water",
-        )
-
-        ax1.tick_params(axis="x", labelsize=16)
-        ax1.tick_params(axis="y", labelsize=16)
-
-        ax1.axvline(x=-35, color="gray", linestyle="dotted", linewidth=1.5)
-        ax1.axvline(x=60, color="gray", linestyle="dotted", linewidth=1.5)
-
-        plt.legend(loc="lower left", fontsize=12)
-        plt.savefig(
-            "data_out/water_plotsss.pdf",
-            dpi=300,
-            bbox_inches="tight",
+        np.savetxt(
+            "water_output.txt",
+            data,
+            fmt="%.6f",
+            delimiter="\t",
+            header="A\tB\tC",
+            comments="",
         )

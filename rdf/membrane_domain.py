@@ -123,8 +123,8 @@ def initialize_domain(voxels):
     box = [
         [0.0, 176],
         [0.0, 176],
-        [-35, 65],
-        # [-100, 100],
+        # [-35, 65],
+        [-100, 100],
     ]
 
     sd = pmmoto.initialize(
@@ -261,6 +261,8 @@ def compare_radii(pmf_value, subdomain, membrane_file):
         subdomain, rdf_pm.img, 1.4
     )
 
+    print("RDF Porosity:", rdf_pm.porosity)
+
     uff_pm = pmmoto.domain_generation.gen_pm_atom_file(
         subdomain=subdomain,
         lammps_file=membrane_file,
@@ -274,14 +276,16 @@ def compare_radii(pmf_value, subdomain, membrane_file):
         subdomain, uff_pm.img, 1.4
     )
 
-    mask = np.where((uff_pm.img == 0) & (rdf_pm.img == 1), 2, uff_pm.img)
+    print("UFF Porosity:", uff_pm.porosity)
 
-    pmmoto.io.output.save_img_data_parallel(
-        "data_out/membrane_domain_compare",
-        subdomain,
-        rdf_pm.img,
-        additional_img={"uff": uff_pm.img, "mask": mask},
-    )
+    # mask = np.where((uff_pm.img == 0) & (rdf_pm.img == 1), 2, uff_pm.img)
+
+    # pmmoto.io.output.save_img_data_parallel(
+    #     "data_out/membrane_domain_compare",
+    #     subdomain,
+    #     rdf_pm.img,
+    #     additional_img={"uff": uff_pm.img, "mask": mask},
+    # )
 
 
 def profile_bridges():
@@ -359,7 +363,7 @@ if __name__ == "__main__":
         voxels_in = (3520, 3520, 4000)
         membrane_files, _ = rdf_helpers.get_bridges_files()
     else:
-        voxels_in = (800, 800, 800)
+        voxels_in = (1500, 1500, 1500)
         membrane_files = glob.glob("data/membrane_data/membranedata.100020000")
         water_files = glob.glob("data/water_data/pressuredata.100020000")
 
@@ -367,12 +371,13 @@ if __name__ == "__main__":
     _water_file = water_files[0]
     _membrane_file = membrane_files[0]
 
-    upper_pmf_data = 3.507219619750977
+    upper_pmf_data = 1.4  # 3.507219619750977
 
     # Determine conncetions and PLots with Water Locations
-    generate_membrane_domain(upper_pmf_data, sd, _membrane_file)
+    # generate_membrane_domain(upper_pmf_data, sd, _membrane_file)
     # connect_water = generate_membrane_domain(upper_pmf_data, sd, _membrane_file)
     # save_water_locations(sd, _water_file, connect_water)
 
     # Plot for comparing radii from RDF and UFF
-    # compare_radii(upper_pmf_data, sd, _membrane_file)
+    pmf = upper_pmf_data
+    compare_radii(pmf, sd, _membrane_file)

@@ -1,6 +1,7 @@
-"""membrane_domain.py"""
+"""persistent_connected_paths.py"""
 
 import glob
+import sys
 import numpy as np
 from mpi4py import MPI
 import pmmoto
@@ -270,13 +271,20 @@ if __name__ == "__main__":
         membrane_files = glob.glob("data/more_membrane_data/*")
         membrane_files.sort()
 
+    # Use command-line argument for pmf
+    if len(sys.argv) < 2:
+        raise ValueError("Need to specify the pmf")
+    pmf = float(sys.argv[1])
+
+    # pmf = 1.4  # average
+    # pmf = 3.61  # max observed min G for connected path
+    # pmf = 17.315  # Maximum G from data
+
     # Open the file for writing, clear previous content if needed
     if rank == 0:
-        file_name = "persistent_paths_random.out"
+        file_name = f"persistent_paths_random_{pmf}.out"
         with open(file_name, "w") as f:
             f.write("Persistence of Path - Time is Count \n")
-
-    pmf = 5
 
     sd = initialize_domain(voxels_in)
     n_persist = 1
@@ -284,7 +292,12 @@ if __name__ == "__main__":
 
     num_files = len(membrane_files)
     buffer = 150
-    sequential = False
+
+    # suspect max be always be connected to start at initial
+    if pmf > 15:
+        sequential = True
+    else:
+        sequential = False
 
     if sequential:
         for n_file, membrane_file in enumerate(membrane_files):
@@ -318,5 +331,9 @@ if __name__ == "__main__":
                 )
                 random_int += 1
                 if random_int >= num_files:
+                    logger.info(
+                        "The number is larger than the files...skipping %s",
+                        membrane_file,
+                    )
                     continue
                 membrane_file = membrane_files[random_int]

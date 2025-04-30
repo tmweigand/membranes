@@ -64,8 +64,9 @@ def generate_bin_and_rdf_plot(bin, rdf, folder):
     ax2.set_ylim(bottom=0)
 
     # Title and layout
+    bin_name = bin.name.replace("_", "-")
     plt.title(
-        f"Water and {bin.name}",
+        f"Water and {bin_name}",
         fontsize=16,
     )
     fig.tight_layout()
@@ -75,7 +76,7 @@ def generate_bin_and_rdf_plot(bin, rdf, folder):
     ax2.tick_params(axis="y", labelsize=16)
 
     # Save
-    out_file = folder + f"bin_count_and_rdf_{bin.name}.pdf"
+    out_file = folder + f"bin_count_and_rdf_{bin_name}.pdf"
     plt.savefig(
         out_file,
         dpi=300,
@@ -179,7 +180,8 @@ def generate_free_energy_plot(rdf, folder, x_line=None, y_line=None):
 
     plt.xlabel("Radial Distance (Å)", fontsize=16)
     plt.ylabel("G(r) (kJ/mol)", fontsize=16)
-    plt.title(f"Potential of Mean Force for Water and {rdf.name}", fontsize=14)
+    bin_name = rdf.name.replace("_", "-")
+    plt.title(f"Potential of Mean Force for Water and {bin_name}", fontsize=14)
     plt.grid(True, alpha=0.3)
     plt.xlim(left=0)
     # plt.ylim(top=20)
@@ -190,7 +192,7 @@ def generate_free_energy_plot(rdf, folder, x_line=None, y_line=None):
     plt.legend()
     plt.tight_layout()
 
-    out_file = folder + f"G_{rdf.name}.pdf"
+    out_file = folder + f"G_{bin_name}.pdf"
     plt.savefig(out_file, dpi=300, bbox_inches="tight")
     plt.close()
 
@@ -255,7 +257,7 @@ def generate_plots():
         generate_bin_plot(bin, "data_out/bin_count_plots/")
         generate_rdf_plot(rdf, "data_out/rdf_plots/", equil_radius)
         generate_free_energy_plot(
-            bounded_rdf, "data_out/bounded_free_energy_plots/", equil_radius, 5
+            bounded_rdf, "data_out/bounded_free_energy_plots/", equil_radius, 15
         )
         generate_bin_and_rdf_plot(bin, rdf, "data_out/bin_count_and_rdf_plots/")
 

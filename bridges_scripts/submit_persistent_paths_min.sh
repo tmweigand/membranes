@@ -10,4 +10,4 @@
 module load anaconda3/2024.10-1
 conda activate /jet/home/tweigand/my_env
 
-mpirun -np 320 python rdf/persistent_connected_paths.py
+mpirun -np 320 python rdf/persistent_connected_paths.py 1.4
