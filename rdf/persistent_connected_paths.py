@@ -130,6 +130,9 @@ def generate_membrane_domain(pmf_value, subdomain, membrane_file):
         subdomain=subdomain, labeled_img=cc
     )
 
+    if connections == []:
+        return False
+
     connected = np.where(cc == connections[0], 1, 0).astype(np.uint8)
 
     conected_morph = pmmoto.filters.morphological_operators.dilate(
@@ -326,14 +329,22 @@ if __name__ == "__main__":
 
             while n_persist >= 1:
                 connected_img = generate_membrane_domain(pmf, sd, membrane_file)
-                persistent_connected_img, n_persist = check_persistence_random(
-                    sd, connected_img, persistent_connected_img, n_persist, file_info
-                )
-                random_int += 1
-                if random_int >= num_files:
-                    logger.info(
-                        "The number is larger than the files...skipping %s",
-                        membrane_file,
-                    )
+
+                if connected_img is False:
                     continue
-                membrane_file = membrane_files[random_int]
+                else:
+                    persistent_connected_img, n_persist = check_persistence_random(
+                        sd,
+                        connected_img,
+                        persistent_connected_img,
+                        n_persist,
+                        file_info,
+                    )
+                    random_int += 1
+                    if random_int >= num_files:
+                        logger.info(
+                            "The number is larger than the files...skipping %s",
+                            membrane_file,
+                        )
+                        continue
+                    membrane_file = membrane_files[random_int]
