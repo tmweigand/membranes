@@ -311,6 +311,7 @@ if __name__ == "__main__":
                 sd, connected_img, persistent_connected_img, n_persist, file_info
             )
     else:
+        
         for n_file in range(num_files):
             n_persist = 1
             persistent_connected_img = None
@@ -331,20 +332,21 @@ if __name__ == "__main__":
                 connected_img = generate_membrane_domain(pmf, sd, membrane_file)
 
                 if connected_img is False:
-                    continue
-                else:
-                    persistent_connected_img, n_persist = check_persistence_random(
-                        sd,
-                        connected_img,
-                        persistent_connected_img,
-                        n_persist,
-                        file_info,
+                    logger.info("No initial connection with %s" % membrane_file)
+                    break
+
+                persistent_connected_img, n_persist = check_persistence_random(
+                    sd,
+                    connected_img,
+                    persistent_connected_img,
+                    n_persist,
+                    file_info,
+                )
+                random_int += 1
+                if random_int >= num_files:
+                    logger.info(
+                        "The number is larger than the files...skipping %s",
+                        membrane_file,
                     )
-                    random_int += 1
-                    if random_int >= num_files:
-                        logger.info(
-                            "The number is larger than the files...skipping %s",
-                            membrane_file,
-                        )
-                        continue
-                    membrane_file = membrane_files[random_int]
+                    break
+                membrane_file = membrane_files[random_int]

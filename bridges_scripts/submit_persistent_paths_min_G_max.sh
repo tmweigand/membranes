@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=membrane_persistent
-#SBATCH --output=membrane_persistent.out
-#SBATCH --error=membrane_persistent.err
+#SBATCH --job-name=membrane_persistent_max_G
+#SBATCH --output=membrane_persistent_max_G.out
+#SBATCH --error=membrane_persistent_max_G.err
 #SBATCH --nodes=5
 #SBATCH --ntasks-per-node=64
 #SBATCH --time=48:00:00
