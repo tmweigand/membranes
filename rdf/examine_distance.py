@@ -156,6 +156,11 @@ if __name__ == "__main__":
 
     bridges = True
 
+    # Use command-line argument for pmf
+    if len(sys.argv) < 2:
+        raise ValueError("Need to specify the pmf")
+    pmf = float(sys.argv[1])
+
     # Grab Files
     if bridges:
         # voxels_in = (3520, 3520, 4000)
@@ -166,10 +171,7 @@ if __name__ == "__main__":
         membrane_files = glob.glob("data/more_membrane_data/*")
         membrane_files.sort()
 
-    # Use command-line argument for pmf
-    if len(sys.argv) < 2:
-        raise ValueError("Need to specify the pmf")
-    pmf = float(sys.argv[1])
+    num_files = len(membrane_files)
 
     # pmf = 1.4  # average
     # pmf = 3.61  # max observed min G for connected path
@@ -182,7 +184,18 @@ if __name__ == "__main__":
             f.write("In Angstroms - From water center \n")
 
     sd = initialize_domain(voxels_in)
-    for n_file, membrane_file in enumerate(membrane_files):
+    for n_file in range(num_files):
+
+        if rank == 0:
+            random_int = np.random.randint(0, num_files)
+        else:
+            random_int = None
+
+        # Broadcast the random number to all processes
+        random_int = comm.bcast(random_int, root=0)
+
+        membrane_file = membrane_files[random_int]
+
         max_edt, max_edt_connected = max_distance(
             pmf_value=pmf, subdomain=sd, membrane_file=membrane_file
         )
