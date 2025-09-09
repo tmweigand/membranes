@@ -4,7 +4,6 @@ import glob
 import numpy as np
 import pmmoto
 import matplotlib.pyplot as plt
-from matplotlib.ticker import ScalarFormatter
 
 
 def generate_bin_plot(bin, folder):
@@ -14,12 +13,12 @@ def generate_bin_plot(bin, folder):
     plt.figure(figsize=(8, 5))
     plt.plot(bin.centers, bin.values, linewidth=2, color="navy")
 
-    plt.xlabel("Distance (Å)", fontsize=12)
-    plt.ylabel("ObservationCounts", fontsize=12)
-    plt.title(
-        f"Distance Observations between Water and Atom Type {bin.name}",
-        fontsize=14,
-    )
+    plt.xlabel("Radial Distance (Å)", fontsize=12)
+    plt.ylabel(f"N_O-H$_2$O,{bin.name}", fontsize=12)
+    # plt.title(
+    #    f"Distance Observations between Water and Atom Type {bin.name}",
+    #    fontsize=14,
+    # )
     plt.grid(True, alpha=0.3)
     plt.xlim(left=0)
     plt.ylim(bottom=0)
@@ -37,10 +36,12 @@ def generate_bin_plot(bin, folder):
 def generate_bin_and_rdf_plot(bin, rdf, folder):
     pmmoto.io.io_utils.check_file_path(folder)
 
+    bin_name = bin.name.replace("_", "-")
+
     fig, ax1 = plt.subplots(figsize=(8, 5))
 
     # Plot bin counts
-    color1 = "navy"
+    color1 = "black"
     ax1.plot(
         bin.centers,
         bin.values / 1e6,
@@ -57,7 +58,7 @@ def generate_bin_and_rdf_plot(bin, rdf, folder):
 
     # Create second y-axis
     ax2 = ax1.twinx()
-    color2 = "darkred"
+    color2 = "blue"
     ax2.plot(rdf.radii, rdf.rdf, color=color2, linestyle="--", linewidth=2, label="RDF")
     ax2.set_ylabel("Radial Distribution Function", fontsize=16, color=color2)
     ax2.tick_params(axis="y", labelcolor=color2)
@@ -97,9 +98,15 @@ def generate_rdf_plot(rdf, folder, x_line=None, y_line=None):
     """
 
     pmmoto.io.io_utils.check_file_path(folder)
-
+    bin_name = rdf.name.replace("_", "-")
     plt.figure(figsize=(8, 5))
-    plt.plot(rdf.radii, rdf.rdf, linewidth=2, color="navy", label="RDF")
+    plt.plot(
+        rdf.radii,
+        rdf.rdf,
+        linewidth=2,
+        color="black",
+        label=f"{bin_name} and O-H$_2$O",
+    )
 
     # Draw vertical line if x_line is provided
     if x_line is not None:
@@ -108,28 +115,30 @@ def generate_rdf_plot(rdf, folder, x_line=None, y_line=None):
             color="red",
             linestyle="--",
             linewidth=1.5,
-            label=f"r = {x_line:.2f}",
+            label=f"Equilibrium Distance = {x_line:.2f} Å",
         )
 
-    if y_line is not None:
-        plt.axhline(
-            y=y_line,
-            color="blue",
-            linestyle="--",
-            linewidth=1.5,
-            label=f"g = {y_line:.2f}",
-        )
+    # if y_line is not None:
+    #     plt.axhline(
+    #         y=y_line,
+    #         color="blue",
+    #         linestyle="--",
+    #         linewidth=1.5,
+    #         label=f"g = {y_line:.2f}",
+    #     )
 
-    plt.xlabel("Distance (Å)", fontsize=12)
-    plt.ylabel("g(r)", fontsize=12)
-    plt.title(f"RDF for Atom Type {rdf.name}", fontsize=14)
+    plt.xlabel("Radial Distance (Å)", fontsize=16)
+    plt.ylabel("g(r)", fontsize=16)
+    # plt.title(f"RDF for Atom Type {rdf.name}", fontsize=14)
     plt.grid(True, alpha=0.3)
     plt.xlim(left=0)
-    plt.ylim(bottom=0)
+    # plt.ylim(top=20)
+
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
 
     plt.legend()
     plt.tight_layout()
-
     out_file = folder + f"bin_count_{rdf.name}.pdf"
     plt.savefig(out_file, dpi=300, bbox_inches="tight")
     plt.close()
@@ -148,13 +157,15 @@ def generate_free_energy_plot(rdf, folder, x_line=None, y_line=None):
 
     pmmoto.io.io_utils.check_file_path(folder)
 
+    bin_name = rdf.name.replace("_", "-")
+
     plt.figure(figsize=(8, 5))
     plt.plot(
         rdf.radii,
         rdf.potential_mean_force(),
         linewidth=2,
-        color="navy",
-        label="Permeation Results",
+        color="black",
+        label=f"{bin_name} and O-H$_2$O",
     )
 
     # Draw vertical line if x_line is provided
@@ -180,8 +191,8 @@ def generate_free_energy_plot(rdf, folder, x_line=None, y_line=None):
 
     plt.xlabel("Radial Distance (Å)", fontsize=16)
     plt.ylabel("G(r) (kJ/mol)", fontsize=16)
-    bin_name = rdf.name.replace("_", "-")
-    plt.title(f"Potential of Mean Force for Water and {bin_name}", fontsize=14)
+
+    # plt.title(f"Potential of Mean Force for Water and {bin_name}", fontsize=14)
     plt.grid(True, alpha=0.3)
     plt.xlim(left=0)
     # plt.ylim(top=20)
@@ -208,6 +219,8 @@ def generate_plots():
     atom_folder = "rdf/bridges_results/bins_extended/"
     atom_map, _ = pmmoto.io.data_read.read_rdf(atom_folder)
 
+    interaction_count = 0
+
     for bin_file in bin_files:
 
         atom_type = bin_file.split("/")[-1].split(".")[0]
@@ -224,6 +237,10 @@ def generate_plots():
         # bins, binned_distances = np.genfromtxt(bin_file, skip_header=2, unpack=True)
         bins, binned_distances = np.genfromtxt(bin_file, skip_header=0, unpack=True)
 
+        interaction_count += np.sum(binned_distances)
+
+        print(atom_label, np.sum(binned_distances), interaction_count)
+
         bin = pmmoto.analysis.bins.Bin(
             bins[0], bins[-1], len(bins), atom_type, binned_distances
         )
@@ -238,7 +255,7 @@ def generate_plots():
             rdf=_rdf,
         )
 
-        bounded_rdf = pmmoto.domain_generation.rdf.Bounded_RDF(
+        bounded_rdf = pmmoto.domain_generation.rdf.BoundedRDF(
             name=bin.name,
             atom_id=atom_label,
             radii=bin.centers,
@@ -254,12 +271,14 @@ def generate_plots():
         radii = pmmoto.particles.uff_radius(atom_names=element)
         equil_radius = radii[element_number[0]] + 1.4
 
-        generate_bin_plot(bin, "data_out/bin_count_plots/")
+        # generate_bin_plot(bin, "data_out/bin_count_plots/")
         generate_rdf_plot(rdf, "data_out/rdf_plots/", equil_radius)
-        generate_free_energy_plot(
-            bounded_rdf, "data_out/bounded_free_energy_plots/", equil_radius, 15
-        )
-        generate_bin_and_rdf_plot(bin, rdf, "data_out/bin_count_and_rdf_plots/")
+        # generate_free_energy_plot(
+        #     bounded_rdf,
+        #     "data_out/bounded_free_energy_plots/",
+        #     equil_radius,
+        # )
+        # generate_bin_and_rdf_plot(bin, rdf, "data_out/bin_count_and_rdf_plots/")
 
 
 if __name__ == "__main__":

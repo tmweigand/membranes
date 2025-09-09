@@ -38,17 +38,17 @@ if __name__ == "__main__":
 
     print(np.average(radii), np.median(radii), np.max(radii), np.min(radii))
 
-    # # Plot it
-    # fig, ax = plt.subplots()
-    # ax.hist(radii, density=True, bins=50, edgecolor="black")
-    # # plt.xlim(left=0)
-    # ax.set_xlabel("Minimum G(r) for connected path", fontsize=16)
-    # ax.set_ylabel("Probability Density", fontsize=16)
-    # ax.tick_params(axis="x", labelsize=16)
-    # ax.tick_params(axis="y", labelsize=16)
-    # # plt.title("Minimum G(r) for Connected Path (kj/mol)")
-    # plt.savefig(
-    #     "data_out/connected_path_frequency.pdf",
-    #     dpi=300,
-    #     bbox_inches="tight",
-    # )
+    # Plot it
+    fig, ax = plt.subplots()
+    ax.hist(radii, density=True, bins=50, facecolor="gray", edgecolor="black")
+    # plt.xlim(left=0)
+    ax.set_xlabel("Minimum G for connected path", fontsize=16)
+    ax.set_ylabel("Probability Density", fontsize=16)
+    ax.tick_params(axis="x", labelsize=16)
+    ax.tick_params(axis="y", labelsize=16)
+    # plt.title("Minimum G(r) for Connected Path (kj/mol)")
+    plt.savefig(
+        "data_out/connected_path_frequency.pdf",
+        dpi=300,
+        bbox_inches="tight",
+    )

@@ -69,7 +69,11 @@ def initialize_domain(voxels):
         box=box,
         rank=rank,
         subdomains=subdomains,
-        boundary_types=((2, 2), (2, 2), (0, 0)),
+        boundary_types=(
+            (pmmoto.BoundaryType.PERIODIC, pmmoto.BoundaryType.PERIODIC),
+            (pmmoto.BoundaryType.PERIODIC, pmmoto.BoundaryType.PERIODIC),
+            (pmmoto.BoundaryType.END, pmmoto.BoundaryType.END),
+        ),
         verlet_domains=(20, 20, 20),
         inlet=((0, 0), (0, 0), (1, 0)),
         outlet=((0, 0), (0, 0), (0, 1)),
@@ -87,7 +91,7 @@ def generate_bounded_rdf():
 
     bounded_rdf = {}
     for _id, _rdf in rdf.items():
-        bounded_rdf[_id] = pmmoto.domain_generation.rdf.Bounded_RDF.from_rdf(
+        bounded_rdf[_id] = pmmoto.domain_generation.rdf.BoundedRDF.from_rdf(
             _rdf, 1.0e-3
         )
 
@@ -142,7 +146,9 @@ def generate_membrane_domain(pmf_value, subdomain, membrane_file):
 
     pm_morph = pmmoto.filters.morphological_operators.dilate(subdomain, pm.img, 1.4)
 
-    porosity = pmmoto.analysis.average.linear_2d(subdomain, pm_morph, (0, 1))
+    porosity = pmmoto.analysis.average.average_image_along_axis(
+        subdomain, pm_morph, (0, 1)
+    )
 
     cc, _ = pmmoto.filters.connected_components.connect_components(
         img=pm.img, subdomain=subdomain
@@ -152,7 +158,8 @@ def generate_membrane_domain(pmf_value, subdomain, membrane_file):
         subdomain=subdomain, labeled_img=cc
     )
 
-    print(connections)
+    if not connections:
+        return porosity, np.zeros_like(porosity), None
 
     connected = np.where(cc == connections[0], 1, 0)
 
@@ -160,7 +167,7 @@ def generate_membrane_domain(pmf_value, subdomain, membrane_file):
         subdomain, connected, 1.4
     )
 
-    connected_porosity = pmmoto.analysis.average.linear_2d(
+    connected_porosity = pmmoto.analysis.average.average_image_along_axis(
         subdomain, conected_morph, (0, 1)
     )
 
@@ -179,7 +186,9 @@ def generate_water_domain(water_radii, subdomain, water_file):
         add_periodic=True,
     )
 
-    porosity = pmmoto.analysis.average.linear_2d(subdomain, pm.img, (0, 1))
+    porosity = pmmoto.analysis.average.average_image_along_axis(
+        subdomain, pm.img, (0, 1)
+    )
 
     # pmmoto.io.output.save_img_data_parallel(
     #     "data_out/water_domain",
@@ -235,7 +244,6 @@ def count_water_locations(subdomain, water_file, img=None):
         coordinates=coords,
         dimension=2,
         bin=water_bins,
-        subdomain=subdomain,
     )
 
     return water_bins
@@ -294,9 +302,9 @@ if __name__ == "__main__":
         voxels_in = (3520, 3520, 4000)
         membrane_files, _ = rdf_helpers.get_bridges_files()
     else:
-        voxels_in = (1200, 1200, 1200)
-        membrane_files = glob.glob("data/membrane_data/membranedata.100020000")
-        water_files = glob.glob("data/water_data/pressuredata.100020000")
+        voxels_in = (1500, 1500, 1500)
+        membrane_files = glob.glob("data/membrane_data/membranedata.100030000")
+        water_files = glob.glob("data/water_data/pressuredata.100030000")
 
     sd = initialize_domain(voxels_in)
     _water_file = water_files[0]
@@ -304,19 +312,29 @@ if __name__ == "__main__":
 
     upper_pmf_data = 17.315
 
-    radius = 4
+    pmf = upper_pmf_data  # 1.40  # 3.61  # upper_pmf_data
 
     if sd.rank == 0:
         fig, ax1 = plt.subplots(figsize=(10, 5))
 
     porosity, connected_porosity, connect_img = generate_membrane_domain(
-        radius, sd, _membrane_file
+        pmf, sd, _membrane_file
     )
 
     if sd.rank == 0:
-        data = np.column_stack((sd.domain.coordinates[2], porosity, connected_porosity))
+        coords = sd.domain.get_coords(
+            sd.domain.box, sd.domain.voxels, sd.domain.resolution
+        )
+
+        print(
+            "Porosity entire domain",
+            porosity.shape,
+            np.mean(porosity),
+            np.mean(connected_porosity),
+        )
+        data = np.column_stack((coords[2], porosity, connected_porosity))
         np.savetxt(
-            "porosity_output.txt",
+            f"porosity_output_{pmf}.txt",
             data,
             fmt="%.6f",
             delimiter="\t",
@@ -324,77 +342,91 @@ if __name__ == "__main__":
             comments="",
         )
 
-    # if sd.rank == 0:
-    #     ax1.plot(sd.domain.coordinates[2], porosity, "k", label="Total Pore Space")
-    #     ax1.plot(
-    #         sd.domain.coordinates[2],
-    #         connected_porosity,
-    #         "b",
-    #         label="Connected Pore Space",
-    #     )
+    if sd.rank == 0:
+        ax1.plot(coords[2], porosity, "k", label="Total Pore Space")
+        ax1.plot(
+            coords[2],
+            connected_porosity,
+            "b",
+            label="Connected Pore Space",
+        )
 
     water_radii = {15: 1.4, 16: 0.65}
     # water_fraction = generate_water_domain(water_radii, sd, _water_file)
     water_bins = count_water_locations(sd, _water_file, img=None)
-    connected_water_bins = count_water_locations(sd, _water_file, img=connect_img)
+    if np.mean(connected_porosity) > 1.0e-6:
+        connected_water_bins = count_water_locations(sd, _water_file, img=connect_img)
 
-    # if sd.rank == 0:
-    #     # ax1.plot(sd.domain.coordinates[2], 1 - water_fraction, label="WATER")
-    #     # plt.legend()
-    #     bin_volume = 176 * 176 * water_bins.width
-    #     volume_water = 29.7  # Angstroms cubed
-    #     ax1.set_ylim(bottom=0.0)
+    if sd.rank == 0:
+        # ax1.plot(sd.domain.coordinates[2], 1 - water_fraction, label="WATER")
+        # plt.legend()
+        bin_volume = 176 * 176 * water_bins.width
+        volume_water = 29.7  # Angstroms cubed
+        ax1.set_ylim(bottom=0.0)
 
-    #     ax1.set_xlabel("z-coordinate (Å)", fontsize=16)
-    #     ax1.set_ylabel("Volume Fraction", fontsize=16)
+        ax1.set_xlabel("z-coordinate (Å)", fontsize=16)
+        ax1.set_ylabel("Volume Fraction", fontsize=16)
 
-    #     ax1.plot(
-    #         water_bins.centers,
-    #         water_bins.values * volume_water / bin_volume,
-    #         "k",
-    #         linestyle="dashed",
-    #         label="Total Water",
-    #     )
+        ax1.plot(
+            water_bins.centers,
+            water_bins.values * volume_water / bin_volume,
+            "k",
+            linestyle="dashed",
+            label="Total Water",
+        )
 
-    #     ax1.plot(
-    #         connected_water_bins.centers,
-    #         connected_water_bins.values * volume_water / bin_volume,
-    #         "b",
-    #         linestyle="dashed",
-    #         label="Connected Water",
-    #     )
+        ax1.plot(
+            connected_water_bins.centers,
+            connected_water_bins.values * volume_water / bin_volume,
+            "b",
+            linestyle="dashed",
+            label="Connected Water",
+        )
 
-    #     ax1.grid(True)
+        ax1.grid(True)
 
-    #     ax1.tick_params(axis="x", labelsize=16)
-    #     ax1.tick_params(axis="y", labelsize=16)
+        ax1.tick_params(axis="x", labelsize=16)
+        ax1.tick_params(axis="y", labelsize=16)
 
-    #     ax1.axvline(x=-35, color="gray", linestyle="dotted", linewidth=1.5)
-    #     ax1.axvline(x=60, color="gray", linestyle="dotted", linewidth=1.5)
+        ax1.axvline(x=-35, color="gray", linestyle="dotted", linewidth=1.5)
+        ax1.axvline(x=60, color="gray", linestyle="dotted", linewidth=1.5)
 
-    #     plt.legend(loc="lower left", fontsize=12)
-    #     plt.savefig(
-    #         "data_out/water_plotsss.pdf",
-    #         dpi=300,
-    #         bbox_inches="tight",
-    #     )
+        plt.legend(loc="lower left", fontsize=12)
+        plt.savefig(
+            "data_out/water_plotsss.pdf",
+            dpi=300,
+            bbox_inches="tight",
+        )
 
     if sd.rank == 0:
         bin_volume = 176 * 176 * water_bins.width
         volume_water = 29.7  # Angstroms cubed
-
-        data = np.column_stack(
-            (
-                water_bins.centers,
-                water_bins.values * volume_water / bin_volume,
-                connected_water_bins.values * volume_water / bin_volume,
+        if np.mean(connected_porosity) > 1.0e-6:
+            print(
+                "Water domain average",
+                water_bins.values.shape,
+                np.mean(water_bins.values * volume_water / bin_volume),
+                np.mean(connected_water_bins.values * volume_water / bin_volume),
             )
-        )
-        np.savetxt(
-            "water_output.txt",
-            data,
-            fmt="%.6f",
-            delimiter="\t",
-            header="A\tB\tC",
-            comments="",
-        )
+        else:
+            print(
+                "Water domain average",
+                np.mean(water_bins.values * volume_water / bin_volume),
+                0.0,
+            )
+        if np.mean(connected_porosity) > 1.0e-6:
+            data = np.column_stack(
+                (
+                    water_bins.centers,
+                    water_bins.values * volume_water / bin_volume,
+                    connected_water_bins.values * volume_water / bin_volume,
+                )
+            )
+            np.savetxt(
+                f"water_output_{pmf}.txt",
+                data,
+                fmt="%.6f",
+                delimiter="\t",
+                header="A\tB\tC",
+                comments="",
+            )

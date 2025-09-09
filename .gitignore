@@ -2,3 +2,4 @@
 data/sample_bridges_data*/
 data/
 data_out/
+__pycache__

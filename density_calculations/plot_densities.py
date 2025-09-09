@@ -49,7 +49,9 @@ def generate_plots():
         "k",
         label="Total",
     )
-    ax.plot(membrane_bins, membrane_density / bin_volume, color="0.5", label="Membrane")
+    ax.plot(
+        membrane_bins, membrane_density / bin_volume, color="0.5", label="Polyamide"
+    )
     ax.plot(water_bins, water_density / bin_volume, "blue", label="Water")
 
     plt.xticks(fontsize=18)
