@@ -43,12 +43,14 @@ def generate_plots():
     fig.set_figwidth(9)
     fig.set_figheight(5)
 
+
     ax.plot(
         membrane_bins,
         membrane_density / bin_volume + water_density / bin_volume,
         "k",
         label="Total",
     )
+
     ax.plot(
         membrane_bins, membrane_density / bin_volume, color="0.5", label="Polyamide"
     )
@@ -81,6 +83,7 @@ def generate_plots():
         dpi=300,
         bbox_inches="tight",
     )
+
 
 
 if __name__ == "__main__":
