@@ -3,7 +3,7 @@ import glob
 import re
 
 
-def get_files(machine):
+def get_files(machine, file_type=None):
     """
     Helper to grab the bridges files
     """
@@ -28,8 +28,10 @@ def get_files(machine):
 
         water_files.sort(key=lambda x: int(re.search(r"(\d+)\.gz$", x).group(1)))
 
-    elif machine == "mac":
+    elif machine == "mac" and file_type == None:
         water_files = sorted(glob.glob("data/water_data/*"))
+    elif machine == "mac" and file_type == "gzip":
+        water_files = sorted(glob.glob("data/water_data_gz/*"))
 
     return water_files
 
