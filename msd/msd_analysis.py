@@ -13,10 +13,13 @@ proc_size = comm.Get_size()
 
 def main():
 
-    water_files = msd_helpers.get_files(machine="mac")
+    # water_files = msd_helpers.get_files(machine="mac")
+    water_files = msd_helpers.get_files(machine="mac", file_type="gzip")
 
     msd_values = []
     times = []
+
+    water_files = water_files * 10
 
     initial_time = True
     for file in water_files:
@@ -43,7 +46,7 @@ def main():
             msd_values.append(msd)
             times.append(time)
 
-            print(f"Time {time}: MSD = {msd}")
+            print(f"Time {time}: MSD = {msd} file {file}")
 
     # Convert to arrays
     msd_values_arr = np.array(msd_values)
