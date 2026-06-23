@@ -178,6 +178,10 @@ class ForceField:
             f"{len(self.dihedral_type_labels)} dihedral types",
             f"{len(self.improper_type_labels)} improper types",
             "",
+            "0.0 1.0 xlo xhi",
+            "0.0 1.0 ylo yhi",
+            "0.0 1.0 zlo zhi",
+            "",
         ]
 
         def _label_section(title: str, labels: dict[int, str]) -> None:
@@ -195,54 +199,55 @@ class ForceField:
         _label_section("Dihedral Type Labels", self.dihedral_type_labels)
         _label_section("Improper Type Labels", self.improper_type_labels)
 
-        # Masses  -- label as identifier
+        # Masses
         if self.atom_params:
             lines += ["Masses", ""]
             for tid, (mass, eps, sigma) in self.atom_params.items():
                 lbl = self.atom_type_labels[tid]
-                lines.append(f"  {lbl}  {mass:.4f}")
+                lines.append(f"  {tid}  {mass:.4f}  # {lbl}")
             lines.append("")
 
-        # Pair Coeffs  lj/cut:  epsilon  sigma  -- label as identifier
+        # Pair Coeffs  lj/cut:  epsilon  sigma
         if self.atom_params:
-            lines += ["Pair Coeffs  # lj/cut", ""]
+            lines += ["Pair Coeffs  # lj/charmm/coul/long", ""]
             for tid, (mass, eps, sigma) in self.atom_params.items():
                 lbl = self.atom_type_labels[tid]
-                lines.append(f"  {lbl}  {eps:.6f}  {sigma:.6f}")
+                lines.append(f"  {tid}  {eps:.6f}  {sigma:.6f}  # {lbl}")
             lines.append("")
 
-        # Bond Coeffs  harmonic:  k  r0  -- label as identifier
+        # Bond Coeffs  harmonic:  k  r0
         if self.bond_params:
             lines += ["Bond Coeffs  # harmonic", ""]
             for tid, (k, r_eq) in self.bond_params.items():
                 lbl = self.bond_type_labels[tid]
-                lines.append(f"  {lbl}  {k:.4f}  {r_eq:.4f}")
+                lines.append(f"  {tid}  {k:.4f}  {r_eq:.4f}  # {lbl}")
             lines.append("")
 
-        # Angle Coeffs  harmonic:  k  theta0  -- label as identifier
+        # Angle Coeffs  harmonic:  k  theta0
         if self.angle_params:
             lines += ["Angle Coeffs  # harmonic", ""]
             for tid, (k, theta_eq) in self.angle_params.items():
                 lbl = self.angle_type_labels[tid]
-                lines.append(f"  {lbl}  {k:.4f}  {theta_eq:.4f}")
+                lines.append(f"  {tid}  {k:.4f}  {theta_eq:.4f}  # {lbl}")
             lines.append("")
 
-        # Dihedral Coeffs  charmm:  k  n  d  weight  -- label as identifier
+        # Dihedral Coeffs  harmonic:  k  n  d
         if self.dihedral_params:
-            lines += ["Dihedral Coeffs  # charmm", ""]
+            lines += ["Dihedral Coeffs  # harmonic", ""]
             for tid, (k, n, d, weight) in self.dihedral_params.items():
                 lbl = self.dihedral_type_labels[tid]
-                lines.append(f"  {lbl}  {k:.4f}  {int(n)}  {int(d)}  {weight:.4f}")
+                d_sign = -1 if round(d) == 180 else 1
+                lines.append(f"  {tid}  {k:.4f}  {d_sign}  {int(n)}  # {lbl}")
             lines.append("")
 
-        # Improper Coeffs  cvff:  k  d  n  -- label as identifier
+        # Improper Coeffs  cvff:  k  d  n
         # AMBER phase 0° -> d = +1,  180° -> d = -1
         if self.improper_params:
             lines += ["Improper Coeffs  # cvff", ""]
             for tid, (k, n, phase) in self.improper_params.items():
                 lbl = self.improper_type_labels[tid]
                 d = -1 if round(phase) == 180 else 1
-                lines.append(f"  {lbl}  {k:.4f}  {d}  {int(n)}")
+                lines.append(f"  {tid}  {k:.4f}  {d}  {int(n)}  # {lbl}")
             lines.append("")
 
         # ------------------------------------------------------------------
@@ -256,9 +261,10 @@ class ForceField:
             for mol_idx, mol in enumerate(self.molecules, 1):
                 for atom in mol.atoms:
                     lines.append(
-                        f"  {atom_id:>6}  {mol_idx:>6}  {atom.type}"
+                        f"  {atom_id:>6}  {mol_idx:>6}  {self._atom_label_to_id[atom.type]}"
                         f"  {atom.charge:>12.7f}"
                         f"  {atom.x:>13.7f}  {atom.y:>13.7f}  {atom.z:>13.7f}"
+                        f"  # {atom.type}"
                     )
                     atom_id += 1
             lines.append("")
@@ -273,7 +279,9 @@ class ForceField:
                     lbl = _type_label(bond.type)
                     a1 = atom_offset + bond.atom_ids[0]
                     a2 = atom_offset + bond.atom_ids[1]
-                    lines.append(f"  {bond_id:>6}  {lbl}  {a1:>6}  {a2:>6}")
+                    lines.append(
+                        f"  {bond_id:>6}  {self._bond_label_to_id[lbl]}  {a1:>6}  {a2:>6}  # {lbl}"
+                    )
                     bond_id += 1
                 atom_offset += mol.n_atoms
             lines.append("")
@@ -289,7 +297,9 @@ class ForceField:
                     a1 = atom_offset + angle.atom_ids[0]
                     a2 = atom_offset + angle.atom_ids[1]
                     a3 = atom_offset + angle.atom_ids[2]
-                    lines.append(f"  {angle_id:>6}  {lbl}  {a1:>6}  {a2:>6}  {a3:>6}")
+                    lines.append(
+                        f"  {angle_id:>6}  {self._angle_label_to_id[lbl]}  {a1:>6}  {a2:>6}  {a3:>6}  # {lbl}"
+                    )
                     angle_id += 1
                 atom_offset += mol.n_atoms
             lines.append("")
@@ -307,8 +317,8 @@ class ForceField:
                     a3 = atom_offset + dihedral.atom_ids[2]
                     a4 = atom_offset + dihedral.atom_ids[3]
                     lines.append(
-                        f"  {dihedral_id:>6}  {lbl}"
-                        f"  {a1:>6}  {a2:>6}  {a3:>6}  {a4:>6}"
+                        f"  {dihedral_id:>6}  {self._dihedral_label_to_id[lbl]}"
+                        f"  {a1:>6}  {a2:>6}  {a3:>6}  {a4:>6}  # {lbl}"
                     )
                     dihedral_id += 1
                 atom_offset += mol.n_atoms
@@ -327,8 +337,8 @@ class ForceField:
                     a3 = atom_offset + improper.atom_ids[2]
                     a4 = atom_offset + improper.atom_ids[3]
                     lines.append(
-                        f"  {improper_id:>6}  {lbl}"
-                        f"  {a1:>6}  {a2:>6}  {a3:>6}  {a4:>6}"
+                        f"  {improper_id:>6}  {self._improper_label_to_id[lbl]}"
+                        f"  {a1:>6}  {a2:>6}  {a3:>6}  {a4:>6}  # {lbl}"
                     )
                     improper_id += 1
                 atom_offset += mol.n_atoms

@@ -96,3 +96,33 @@ def test_gen_mpd_and_tmc(tmp_path):
     # Create LAMMPS output
     ff = forcefield.ForceField([mpd_mol, tmc_mol])
     ff.write(tmp_path / "ff.lammps")
+
+
+def test_gen_mpd1_tmc1(tmp_path):
+    tmc = generate_molecule_data.GenMolecule(
+        "tmc",
+        "Nc1cccc(NC(=O)c2cc(C(Cl)=O)cc(C(Cl)=O)c2)c1",
+        charge=0,
+        forcefield="gaff2",
+        outdir=str(tmp_path),
+    )
+
+    # Generate GAFF data
+    tmc.generate_forcefield()
+
+    # Create Parmed structure
+    tmc.create_pmd()
+
+    # Plot molecule with charges
+    tmc.plot_2d_parameters(
+        kind="charge", out_png=str(tmp_path / "mpd1_tmc1_charge.png")
+    )
+
+    # Switch from Parmed Structure to Molecule
+    mol = tmc.convert_to_molecule()
+
+    # Save as lammps .mol file
+    mol.write_mol(tmp_path / "lammps_mpd1_tmc1.mol")
+
+    ff = forcefield.ForceField([mol])
+    ff.write(tmp_path / "mpd1_tmc1_ff.lammps")

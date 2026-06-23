@@ -23,23 +23,30 @@ class GenMolecule:
         smiles: str,
         charge: int,
         forcefield: str = "gaff2",
+        charge_model: str = "bcc",
         outdir: str = "/.",
     ):
         self.name = name
         self.smiles = smiles
         self.charge = charge
         self.forcefield = forcefield
+        self.charge_model = charge_model  # Run antechamber -L for all options!
         self.outdir = outdir
         self.pmd_structure: Optional[pmd.Structure] = None
         self.mol = None
         self.gaff: Optional[runGAFF] = None
 
-    def generate_forcefield(self, seed: int = None):
+    def generate_forcefield(self, seed: Optional[int] = None):
         """
         From smiles, generate GAFF
         """
         self.gaff = runGAFF(
-            name=self.name, smiles=self.smiles, charge=self.charge, outdir=self.outdir
+            name=self.name,
+            smiles=self.smiles,
+            charge=self.charge,
+            charge_model=self.charge_model,
+            outdir=self.outdir,
+            seed=seed,
         )
         self.mol = self.gaff.mol
 

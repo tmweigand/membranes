@@ -24,6 +24,9 @@ cmake ../cmake \
     -DPKG_RIGID=yes \
     -DPKG_MANYBODY=yes \
     -DPKG_GRAPHICS=yes \
+    -DPKG_REACTION=yes \
+    -DPKG_VORONOI=yes \
+    -DPKG_COMPRESS=yes \
 
 make -j$(nproc)
 make install
