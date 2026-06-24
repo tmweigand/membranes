@@ -1,0 +1,87 @@
+# General 
+units            real
+atom_style       full
+dimension        3
+newton           off
+boundary         p p p
+
+# Styles
+pair_style       lj/charmm/coul/long 10.0 12.0
+pair_modify      shift no mix sixthpower
+kspace_style     pppm 1.0e-4
+kspace_modify    diff ad
+bond_style       harmonic
+angle_style      harmonic
+dihedral_style   charmm
+improper_style   harmonic
+special_bonds    charmm
+
+read_data ../../molecules/pre_replicate.lmps
+velocity all set 0 0 0 
+molecule mol1 ../../molecules/tip3p.mol
+dielectric 1.0
+neighbor 4.0 bin
+neigh_modify delay 0 every 1 check yes one 4000
+timestep 2.0
+run_style verlet
+
+replicate 2 4 4
+variable vxlen equal $(xhi-xlo)
+variable vylen equal $(yhi-ylo)
+variable vzlen equal $(zhi-zlo)
+
+region rDelete block INF INF $(ylo) $(yhi-v_vylen/4) $(zlo+v_vzlen/4) $(zhi-v_vzlen/4) side out units box
+group gDelete region rDelete
+group gDelete include molecule
+delete_atoms group gDelete
+reset_atom_ids
+print -$(v_vylen/2)
+change_box all y delta 0 -43.97527498 units box
+displace_atoms all move 0 -$(v_vylen/2) 0 units box
+displace_atoms all move 0 0 $(-zlo) units box
+change_box all x delta -$(xlo) -$(xlo) y delta -$(ylo) -$(ylo) z delta -$(zlo+97.72283329) -$(zlo-19.5448998) units box
+
+group SOLID union all
+
+region FLUID block INF INF INF INF 95 295 side out units box
+
+lattice fcc 4.886141664
+create_atoms 0 region FLUID mol mol1 322
+group WATER subtract all SOLID
+write_data test.lmps
+
+fix setForceMinimize SOLID setforce 0 0 0
+minimize         1.0e-8 1.0e-8 1000 100000
+unfix setForceMinimize
+
+
+variable PISTON_AREA equal  (xhi-xlo)*(yhi-ylo)
+variable FinMD_to_FinN equal 6.94768717535204e-11
+variable ATM_to_nm2 equal 101325
+variable ANG_to_M equal 1e-10
+
+compute        peratomstressvol all stress/atom NULL 
+compute        peratomvol all voronoi/atom
+
+variable       peratompress         atom (c_peratomstressvol[1]+c_peratomstressvol[2]+c_peratomstressvol[3])
+compute        totalpressure WATER reduce sum c_peratomstressvol[1] c_peratomstressvol[2] c_peratomstressvol[3]
+compute        peratommass all property/atom mass
+compute        totalmass WATER reduce sum c_peratommass
+compute        totalvol WATER reduce sum c_peratomvol[1]
+
+variable actualdensity equal c_totalmass*(1e8)^3/(6.022e23*c_totalvol)
+variable press equal -(c_totalpressure[1]+c_totalpressure[2]+c_totalpressure[3])/(3*c_totalvol)
+dump waterdata WATER custom/gz 5000 pressure/pressuredata.*.gz id mol type mass q x y z vx vy vz v_peratompress c_peratomvol[1]
+dump systemdata all custom/gz 5000 system/systemdata.*.gz id mol type mass q x y z vx vy vz v_peratompress c_peratomvol[1]
+dump_modify waterdata sort 2
+dump_modify systemdata sort 2
+restart 5000 restarts/restart.*
+
+#fix SOLIDFORCEset SOLID setforce 0 0 0
+fix SOLIDSPRINGset SOLID spring/self 478
+thermo 5000
+thermo_style custom step temp press v_press v_actualdensity c_totalvol
+fix 1 WATER npt temp 300 300 200 z 100.0 100.0 2000 
+fix FXSHAKE WATER rattle 0.0001 20 5000 b 17 a 22 
+run 10000000
+unfix 1

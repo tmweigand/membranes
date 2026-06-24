@@ -1,0 +1,210 @@
+# General
+units            real
+atom_style       full
+dimension        3
+newton           off
+boundary         p p p
+
+
+# Styles
+pair_style       lj/charmm/coul/long 7.0 9.0
+pair_modify      shift no mix sixthpower
+kspace_style     pppm 1.0e-4
+kspace_modify    diff ad 
+bond_style       harmonic
+angle_style      harmonic
+dihedral_style   charmm
+improper_style   harmonic
+special_bonds    charmm
+
+# System definition
+read_data equil_polymer.lmps 
+
+dielectric 1.0
+neighbor 4.0 bin
+neigh_modify delay 0 every 1 check yes one 3000
+timestep 2.0
+run_style verlet
+
+# Set Graphene lattice constant for use as pistons and backing layer
+variable GRAPHENE_LATTICE_CONST equal 2.46
+variable FinMD_to_FinN equal 6.94768717535204e-11
+variable ANG_to_M equal 1e-10
+variable ATM_to_nm2 equal 101325
+variable mult1d equal ${mult}^(1/3)
+variable mult2d equal ${mult}^(2/3)
+# Reset all coordinates to start at 0.0 for future data analysis
+
+change_box all x delta -$(xlo) -$(xlo) y delta -$(ylo) -$(ylo) z delta -$(zlo) -$(zlo) units box
+displace_atoms all move -$(xlo) -$(ylo) -$(zlo) units box
+
+#velocity all create 300 $(123*v_rand)
+timestep 10.0
+minimize         1.0e-8 1.0e-8 1000 100000
+timestep 2.0
+fix 1 all nvt temp 300 300 100
+run 5000
+unfix 1
+timestep 10.0
+minimize         1.0e-8 1.0e-8 1000 100000
+timestep 2.0
+fix 1 all nvt temp 300 300 100
+run 5000
+unfix 1
+
+# UNWRAP membrane
+region membranebox block  $(xlo) $(xhi)  $(ylo) $(yhi)  $(zlo) $(zhi-2.0*v_mult1d) side out units box
+region membranewater block  $(xlo) $(xhi)  $(ylo) $(yhi)  $(zlo) $(zhi) side in units box
+delete_atoms region membranebox bond yes
+reset_atom_ids sort yes
+region membranebox delete
+region membranebox block  INF INF INF INF INF INF units box
+group membrane region membranebox
+region membranebox delete
+
+# Set distance to ends of new box, and number of H2O add on each side
+variable z_delta equal 200*${mult1d}
+variable NUM_H20 equal 3600*${mult2d}
+variable NUM_H20_ins equal v_NUM_H20
+
+# Use slab modifier to accurately model interactions across periodic boundaries in the zdirection
+kspace_modify slab 3.0
+change_box all boundary p p f z delta -${z_delta} ${z_delta} units box
+fix zwalls all wall/lj126 zlo $(zlo+v_z_delta-9*v_mult1d) 0.06844 3.40700 9 zhi $(zhi-v_z_delta+9*v_mult1d) 0.06844 3.40700 9 
+fix_modify zwalls energy yes
+
+# Minimize cut membrane to drive out floating atoms created by unwrapping
+
+
+timestep 10.0
+minimize         1.0e-8 1.0e-8 1000 100000
+timestep 1.0
+fix 1 all nvt temp 300 300 100
+run 100
+unfix 1
+timestep 10.0
+minimize         1.0e-8 1.0e-8 1000 100000
+unfix zwalls
+
+
+# Delete floating atoms
+region membranebox block  $(xlo) $(xhi)  $(ylo) $(yhi)  $(zlo+v_z_delta) $(zhi-v_z_delta) side out units box
+delete_atoms region membranebox bond yes
+region membranebox delete
+reset_atom_ids
+
+#Define regions within which to randomly add water molecules
+
+region FEED block INF INF INF INF $(zlo+10*v_mult1d) $(zlo+v_z_delta-10*v_mult1d) units box
+region PERM block INF INF INF INF $(zhi-v_z_delta+10*v_mult1d) $(zhi-10*v_mult1d) units box
+
+# Add water molecules to feed and permeate regions, minimize to move overlapping molecules
+molecule mol1 ../../molecules/tip3p.mol
+lattice fcc 4.3
+create_atoms 0 region membranewater subset ${NUM_H20_ins} $(5123*v_mult*v_rand) mol mol1 $(231*v_mult*v_rand)
+#create_atoms 0 region membranewater  mol mol1 $(231*v_mult*v_rand)
+create_atoms 0 region FEED subset ${NUM_H20} $(521*v_mult*v_rand) mol mol1 $(322*v_mult*v_rand)
+create_atoms 0 region PERM subset ${NUM_H20} $(512*v_mult*v_rand) mol mol1 $(632*v_mult*v_rand)
+
+lattice hcp ${GRAPHENE_LATTICE_CONST}
+
+group FEEDWATER region FEED
+group PERMWATER region PERM
+group MEMWATER1  region membranewater
+group WATER type 15 16
+group MEMWATER intersect MEMWATER1 WATER
+
+delete_atoms overlap 2 MEMWATER all mol yes 
+timestep 10.0
+minimize         1.0e-8 1.0e-8 1000 100000
+
+#write_data test.lmps
+#quit
+
+# Add 'polysulfone' backing layer to keep membrane in place 
+variable PIN_LOCATION equal $(zhi-v_z_delta-5*v_mult1d)
+region PINlayer block INF INF INF INF ${PIN_LOCATION} $(v_GRAPHENE_LATTICE_CONST+v_PIN_LOCATION) units box
+
+group PINplane1 type 1 2
+group PINplane2 region PINlayer
+group PINplane intersect PINplane1 PINplane2
+group PINplane1 delete
+group PINplane2 delete
+
+#fix tether PINplane spring/self 427.6 z
+
+
+# Create 'graphene' pistons to constrain water molecules and simulate operation
+region zwallLO block INF INF INF INF $(zlo) $((zlo)+v_GRAPHENE_LATTICE_CONST*.75) units box
+
+create_atoms 17 region zwallLO 
+group LOzwall1 type 17
+group LOzwall2 region zwallLO
+group LOzwall intersect LOzwall1 LOzwall2
+group LOzwall1 delete
+group LOzwall2 delete
+
+region zwallHI block INF INF INF INF $((zhi)-v_GRAPHENE_LATTICE_CONST*.75) $(zhi) units box
+
+create_atoms 17 region zwallHI
+group HIzwall1 type 17
+group HIzwall2 region zwallHI
+group HIzwall intersect HIzwall1 HIzwall2
+group HIzwall1 delete
+group HIzwall2 delete
+
+group zwalls union LOzwall HIzwall
+group mobile subtract all zwalls
+
+
+change_box all z delta $(-200*v_mult1d) $(200*v_mult1d) units box
+fix zwalls1 all wall/lj126 zlo $(zlo) 0.06844 3.40700 9 zhi $(zhi) 0.06844 3.40700 9
+fix_modify zwalls1 energy yes
+
+
+
+#Pressurize system with pistons
+fix balance1 all balance 0 1.0 shift z 10 1.1
+variable APPL_PRESS_FEED equal 1*${ATM_to_nm2}
+variable APPL_PRESS_PERM equal 1*${ATM_to_nm2}
+variable PISTON_AREA equal  ($(xhi)-$(xlo))*($(yhi)-$(ylo))
+variable pos_HYDRATE_FORCE equal ${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_FEED}/${FinMD_to_FinN}
+variable neg_HYDRATE_FORCE equal -${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_PERM}/${FinMD_to_FinN}
+fix FEEDPISTON LOzwall rigid single torque * off off off force * off off on 
+fix PERMPISTON HIzwall rigid single torque * off off off force * off off on 
+
+fix FEEDFORCE LOzwall addforce  0.0 0.0 v_pos_HYDRATE_FORCE
+fix PERMFORCE HIzwall addforce  0.0 0.0 v_neg_HYDRATE_FORCE
+
+#Collect sufficient data for morphological analysis
+compute        peratomstressvol WATER stress/atom NULL 
+compute	       peratomstressvolke WATER stress/atom NULL ke 
+compute        peratomstressvolkspace WATER stress/atom NULL kspace
+compute        peratomstressvolfix WATER stress/atom NULL fix 
+compute        peratomvol WATER voronoi/atom
+
+variable       peratompress         atom -(c_peratomstressvol[1]+c_peratomstressvol[2]+c_peratomstressvol[3])/(3*c_peratomvol[1])
+variable       peratompresske       atom -(c_peratomstressvolke[1]+c_peratomstressvolke[2]+c_peratomstressvolke[3])/(3*c_peratomvol[1])
+variable       peratompresskspace   atom -(c_peratomstressvolkspace[1]+c_peratomstressvolkspace[2]+c_peratomstressvolkspace[3])/(3*c_peratomvol[1])
+variable       peratompressfix      atom -(c_peratomstressvolfix[1]+c_peratomstressvolfix[2]+c_peratomstressvolfix[3])/(3*c_peratomvol[1])
+variable       znew                 atom (z-(abs(xcm(LOzwall,z)-xcm(HIzwall,z))/2+xcm(LOzwall,z)))
+
+dump waterdata WATER custom/gz 500 hydr/water/pressuredata.*.gz id mol type mass q x y z v_znew vx vy vz v_peratompress v_peratompresske v_peratompresskspace v_peratompressfix c_peratomstressvol[1] c_peratomstressvol[2] c_peratomstressvol[3] c_peratomstressvolke[1] c_peratomstressvolke[2] c_peratomstressvolke[3] c_peratomstressvolkspace[1] c_peratomstressvolkspace[2] c_peratomstressvolkspace[3] c_peratomstressvolfix[1] c_peratomstressvolfix[2] c_peratomstressvolfix[3] c_peratomvol[1]
+dump_modify waterdata sort 2
+dump membranedata membrane custom/gz 500 hydr/membrane/membranedata.*.gz id mol type mass q x y z v_znew
+dump_modify membranedata sort 1
+dump systemdata all custom/gz 500 hydr/system/systemdata.*.gz id mol type mass q x y z v_znew
+dump_modify systemdata sort 1
+
+# Run hydration experiment
+reset_atom_ids
+restart 1000000 hydr/restarts/restart.*
+neigh_modify exclude type 17 17
+#fix FXSHAKE mobile shake 0.0001 20 0 a 4 9 10 12 19 21 22 25 b 2 9 10 15 16 17 t 5 8 13 14 15
+fix FXSHAKE mobile shake 0.0001 10 0 b 17 a 22 t 5 8 14
+fix 1 mobile nvt temp 300 300 200
+thermo 100000
+timestep 2.0
+run 1000
+unfix 1 
+#write_data hydrated_data.lmps

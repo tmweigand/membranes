@@ -1,0 +1,80 @@
+# General 
+units            real
+atom_style       full
+dimension        3
+newton           off
+boundary         p p f
+
+
+# Styles
+pair_style       lj/charmm/coul/long 10.0 12.0
+pair_modify      shift no mix sixthpower
+kspace_style     pppm 1.0e-4
+kspace_modify    diff ad slab nozforce
+bond_style       harmonic
+angle_style      harmonic
+dihedral_style   charmm
+improper_style   harmonic
+special_bonds    charmm
+
+# System definition
+read_restart hydr/restarts/restart.*
+
+dielectric 1.0
+neighbor 4.0 bin
+neigh_modify delay 0 every 1 check yes one 4000
+timestep 2.0
+run_style verlet
+
+# Set Graphene lattice constant variable for use as pistons and backing layer
+variable GRAPHENE_LATTICE_CONST equal 2.46
+
+# Set lattice constant for use in packing waters into feed/permeate
+lattice fcc 3.9
+variable FinMD_to_FinN equal 6.94768717535204e-11
+variable ANG_to_M equal 1e-10
+variable ATM_to_nm2 equal 101325
+
+#Pressurize system with pistons
+change_box all z delta 0 50 units box
+fix zwalls1 all wall/lj126 zlo -226 0.06844 3.40700 9 zhi 450 0.06844 3.40700 9
+fix_modify zwalls1 energy yes
+
+# Set confining pressure to 1 ATM (2 ATM confining pressure of water at 300 K to overcome, i.e. 2 + 1 = 3)
+variable APPL_PRESS_FEED equal 6100*${ATM_to_nm2}/count(LOzwall)
+variable APPL_PRESS_PERM equal 6000*${ATM_to_nm2}/count(HIzwall)
+variable PISTON_AREA equal  ($(xhi)-$(xlo))*($(yhi)-$(ylo))
+variable pos_HYDRATE_FORCE equal ${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_FEED}/${FinMD_to_FinN}
+variable neg_HYDRATE_FORCE equal -${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_PERM}/${FinMD_to_FinN}
+
+fix FEEDPISTON LOzwall rigid single torque * off off off force * off off on 
+fix PERMPISTON HIzwall rigid single torque * off off off force * off off on
+
+fix FEEDFORCE LOzwall aveforce  NULL NULL $(v_pos_HYDRATE_FORCE)
+fix PERMFORCE HIzwall aveforce  NULL NULL  $(v_neg_HYDRATE_FORCE)
+
+#Collect sufficient data for morphological analysis
+compute        peratomstressvol WATER stress/atom NULL 
+compute	       peratomstressvolke WATER stress/atom NULL ke 
+compute        peratomstressvolkspace WATER stress/atom NULL kspace
+compute        peratomstressvolfix WATER stress/atom NULL fix 
+compute        peratomvol WATER voronoi/atom
+
+variable       peratompress         atom (c_peratomstressvol[1]+c_peratomstressvol[2]+c_peratomstressvol[3])
+variable       peratompresske       atom (c_peratomstressvolke[1]+c_peratomstressvolke[2]+c_peratomstressvolke[3])
+variable       peratompresskspace   atom (c_peratomstressvolkspace[1]+c_peratomstressvolkspace[2]+c_peratomstressvolkspace[3])
+variable       peratompressfix      atom (c_peratomstressvolfix[1]+c_peratomstressvolfix[2]+c_peratomstressvolfix[3])
+
+dump waterdata WATER custom/gz 10000 perm_delta/water/pressuredata.*.gz id mol type mass q x y z vx vy vz v_peratompress v_peratompresske v_peratompresskspace v_peratompressfix c_peratomstressvol[1] c_peratomstressvol[2] c_peratomstressvol[3] c_peratomstressvolke[1] c_peratomstressvolke[2] c_peratomstressvolke[3] c_peratomstressvolkspace[1] c_peratomstressvolkspace[2] c_peratomstressvolkspace[3] c_peratomstressvolfix[1] c_peratomstressvolfix[2] c_peratomstressvolfix[3] c_peratomvol[1]
+dump_modify waterdata sort 2
+
+# Run hydration experiment
+restart 10000 perm_delta/restarts/restart.*
+neigh_modify exclude type 17 17
+fix 1 WATER nvt temp 300 300 200
+fix FXSHAKE WATER rattle 0.0001 10 0 b 17 a 22 t 5 8 14
+thermo 1000
+run 25000000
+unfix 1
+
+
