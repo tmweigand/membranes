@@ -1,0 +1,181 @@
+# General 
+units            real
+atom_style       full
+dimension        3
+newton           off
+boundary         p p p
+
+# Styles
+pair_style       lj/charmm/coul/long 10.0 12.0
+pair_modify      shift no mix arithmetic
+kspace_style     pppm 1.0e-4
+kspace_modify    diff ad
+bond_style       harmonic
+angle_style      harmonic
+dihedral_style   charmm
+improper_style   harmonic
+special_bonds    charmm
+
+# System definition
+read_data ../../molecules/tip3pst.lmps
+
+dielectric 1.0
+neighbor 4.0 bin
+neigh_modify delay 0 every 1 check yes one 4000
+timestep 2.0
+run_style verlet
+
+region bawks block  INF INF INF INF INF INF units box
+delete_atoms region bawks
+
+# Set Graphene lattice constant variable for use as pistons and backing layer
+variable GRAPHENE_LATTICE_CONST equal 1.418
+lattice hcp ${GRAPHENE_LATTICE_CONST}
+
+change_box all x final 0 40 y final -10 30 z final -80 50
+change_box all boundary p p f
+kspace_modify slab nozforce
+
+variable PISTON_AREA equal  (xhi-xlo)*(yhi-ylo)
+variable FinMD_to_FinN equal 6.94768717535204e-11
+variable ATM_to_nm2 equal 101325
+variable ANG_to_M equal 1e-10
+
+region bawks delete
+
+region SOLIDFRONTTOP block INF INF 20 30 -20 -19.5
+region SOLIDFRONTBOT block INF INF -10 0.5 -20 -19.5
+region SOLIDBACKTOP block INF INF 20 30 19.5 20
+region SOLIDBACKBOT block INF INF -10 0.5 19.5 20
+region SOLIDSIDES union 4 SOLIDFRONTTOP SOLIDFRONTBOT SOLIDBACKTOP SOLIDBACKBOT
+create_atoms 3 region SOLIDSIDES
+
+lattice hcp ${GRAPHENE_LATTICE_CONST} orient x 1 0 0 orient y 0 0 1 orient z 0 -1 0
+region SOLIDTOP block INF INF 21 21.5 -18 18
+region SOLIDBOT block INF INF 0.9 1 -18 18
+
+region SOLIDGAP union 2 SOLIDTOP SOLIDBOT 
+create_atoms 3 region SOLIDGAP
+
+group SOLID type 3 
+#region SOLIDWALL block INF INF 30 90 -1 1 units box
+#create_atoms 3 region SOLIDWALL
+group ALLSOLID type 3 
+#group WALL subtract ALLSOLID SOLID
+lattice hcp ${GRAPHENE_LATTICE_CONST}
+#region FLUIDWALL block INF INF 30 50 -4 4 side out units box
+region FLUIDTOP block INF INF 19 30 -21 21 side out
+region FLUIDBOT block INF INF -10 3 -21 21 side out
+
+
+region FEED block INF INF INF INF INF -20
+region GAP block INF INF INF INF -20 20
+region PERM block INF INF INF INF 20 INF
+
+#region FLUID intersect 3 FLUIDTOP FLUIDBOT FLUIDWALL
+region FLUID intersect 2 FLUIDTOP FLUIDBOT
+lattice fcc 5
+molecule mol1 ../../molecules/tip3pst.mol
+create_atoms 0 region FLUID mol mol1 322
+group WATER type 1 2
+
+group FEEDATOMS dynamic WATER region FEED every 1000
+group GAPATOMS dynamic WATER region GAP every 1000
+group PERMATOMS dynamic WATER region PERM every 1000
+
+change_box all z delta -10 10 units box
+lattice hcp 3.984799762
+region zwallLO block INF INF INF INF $(zlo) $(zlo+3.984799762*.75) units box
+create_atoms 3 region zwallLO 
+group LOzwall1 type 3
+group LOzwall2 region zwallLO
+group LOzwall intersect LOzwall1 LOzwall2
+group LOzwall1 delete
+group LOzwall2 delete
+
+region zwallHI block INF INF INF INF $(zhi-3.984799762*.75) $(zhi) units box
+create_atoms 3 region zwallHI
+group HIzwall1 type 3
+group HIzwall2 region zwallHI
+group HIzwall intersect HIzwall1 HIzwall2
+group HIzwall1 delete
+group HIzwall2 delete
+
+change_box all z delta -100 100 units box
+group WALLS union LOzwall HIzwall
+group ALLSOLIDPLUSPISTONS type 3
+write_data test.lmps
+
+fix setForceMinimize ALLSOLIDPLUSPISTONS setforce 0 0 0
+minimize         1.0e-8 1.0e-8 1000 100000
+timestep 2.0
+unfix setForceMinimize
+
+variable APPL_PRESS_FEED equal 100*${ATM_to_nm2}/count(LOzwall)
+variable APPL_PRESS_PERM equal 1*${ATM_to_nm2}/count(HIzwall)
+
+variable pos_HYDRATE_FORCE equal ${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_FEED}/${FinMD_to_FinN}
+variable neg_HYDRATE_FORCE equal -${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_PERM}/${FinMD_to_FinN}
+
+fix FEEDFORCEset LOzwall setforce  0.0 0.0 NULL
+fix PERMFORCEset HIzwall setforce  0.0 0.0 NULL
+
+fix SOLIDSPRINGset ALLSOLID spring/self 478
+#fix SOLIDFORCEset ALLSOLID setforce  0.0 0.0 0.0
+
+fix FEEDFORCE LOzwall aveforce  NULL NULL v_pos_HYDRATE_FORCE
+fix PERMFORCE HIzwall aveforce  NULL NULL v_neg_HYDRATE_FORCE
+
+compute LOWALLcom LOzwall com
+compute HIWALLcom HIzwall com
+
+compute LOWALLforce LOzwall group/group WATER
+compute HIWALLforce HIzwall group/group WATER
+
+variable press_wall_lo equal -c_LOWALLforce[3]*${FinMD_to_FinN}/(${ATM_to_nm2}*${PISTON_AREA}*${ANG_to_M}*${ANG_to_M})
+variable press_wall_hi equal c_HIWALLforce[3]*${FinMD_to_FinN}/(${ATM_to_nm2}*${PISTON_AREA}*${ANG_to_M}*${ANG_to_M})
+
+#Collect sufficient data for morphological analysis
+compute        peratomstressvol all stress/atom NULL 
+compute        peratomvol all voronoi/atom
+
+variable       peratompress         atom (c_peratomstressvol[1]+c_peratomstressvol[2]+c_peratomstressvol[3])
+compute        totalpressure WATER reduce sum c_peratomstressvol[1] c_peratomstressvol[2] c_peratomstressvol[3]
+compute        peratommass all property/atom mass
+compute        totalmass WATER reduce sum c_peratommass
+compute        totalvol WATER reduce sum c_peratomvol[1]
+
+variable actualdensity equal c_totalmass*(1e8)^3/(6.022e23*c_totalvol)
+variable press equal -(c_totalpressure[1]+c_totalpressure[2]+c_totalpressure[3])/(3*c_totalvol)
+dump waterdata all custom/gz 5000 pressure/pressuredata.*.gz id mol type mass q x y z vx vy vz v_peratompress c_peratomvol[1]
+dump_modify waterdata sort 2
+restart 5000 restarts/restart.*
+
+
+# Run hydration experiment
+write_data test.lmps
+
+thermo 5000
+fix 1water WATER nve
+fix 1walls WALLS nve 
+fix 1solid ALLSOLID nve
+neigh_modify exclude group ALLSOLID ALLSOLID
+
+#compute WATERTEMP WATER temp/profile 1 1 1 xy 80 240
+#compute WALLSTEMP WALLS temp/com 
+
+fix FEEDTEMP FEEDATOMS temp/berendsen 300.0 300.0 200 
+fix GAPTEMP GAPATOMS temp/berendsen 300.0 300.0 200 
+fix PERMTEMP PERMATOMS temp/berendsen 300.0 300.0 200 
+
+
+#fix TEMP WATER temp/berendsen 300.0 300.0 200
+fix TEMPSOLID ALLSOLID temp/berendsen 300.0 300.0 200 
+#fix TEMPWALLS WALLS temp/berendsen 300.0 300.0 200 
+
+#fix_modify 1water temp WATERTEMP 
+#fix_modify TEMPWALLS temp WALLSTEMP
+thermo_style custom step temp press v_press v_actualdensity c_totalvol
+fix FXSHAKE WATER rattle 0.0001 20 5000 b 1 a 1 
+run 10000000
+unfix 1

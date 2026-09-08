@@ -1,0 +1,88 @@
+# General MUST DEFINE VARIABLES mult AND rand USING THE -v FLAG IN COMMAND LINE CALL TO LMPS
+units            real
+atom_style       full
+dimension        3
+newton           off
+boundary         p p p
+
+
+# Styles
+pair_style       lj/charmm/coul/long 10.0 12.0
+pair_modify      shift no mix sixthpower
+kspace_style     pppm 1.0e-4
+kspace_modify    diff ad
+bond_style       harmonic
+angle_style      harmonic
+dihedral_style   charmm
+improper_style   harmonic
+special_bonds    charmm
+
+# System definition
+read_data ../../molecules/tip3p.lmps 
+
+dielectric 1.0
+neighbor 4.0 bin
+neigh_modify delay 0 every 1 check yes one 4000
+timestep 2.0
+run_style verlet
+#pair_coeff 15 15 0.102 3.188 0.102 3.188
+#pair_coeff 16 16 0.0 0.0 0.0 0.0
+region bawks block  INF INF INF INF INF INF units box
+delete_atoms region bawks
+change_box all x final 0 40 y final 0 40 z final -190 190 units box
+change_box all boundary p p f
+kspace_modify slab 3.0
+lattice fcc 4.8
+region bawks delete
+region bawks block  INF INF INF INF -160 160 units box
+molecule mol1 ../../molecules/tip3p.mol
+create_atoms 0 region bawks mol mol1 322
+variable zLOWALL internal -162.5
+variable zHIWALL internal 162.5
+variable PISTON_AREA equal  (xhi-xlo)*(yhi-ylo)
+variable FinMD_to_FinN equal 6.94768717535204e-11
+variable ATM_to_nm2 equal 101325
+variable ANG_to_M equal 1e-10
+fix zwalls all wall/lj126 zlo v_zLOWALL 0.102 3.188 12 zhi v_zHIWALL 0.102 3.188 12 units box 
+fix_modify zwalls energy yes
+group WATER type 15 16
+minimize         1.0e-8 1.0e-8 1000 100000
+timestep 2.0
+variable press_wall_lo equal -f_zwalls[1]*${FinMD_to_FinN}/(${ATM_to_nm2}*${PISTON_AREA}*${ANG_to_M}*${ANG_to_M})
+variable press_wall_hi equal f_zwalls[2]*${FinMD_to_FinN}/(${ATM_to_nm2}*${PISTON_AREA}*${ANG_to_M}*${ANG_to_M})
+
+fix loCONTROLLER all controller 10 0.25 0.0000001 0.0000000 0.00000005 v_press_wall_lo 1.00 zLOWALL
+fix hiCONTROLLER all controller 10 -0.25 0.0000001 0.0000000 0.00000005 v_press_wall_hi 1.00 zHIWALL
+
+#Collect sufficient data for morphological analysis
+compute        peratomstressvol WATER stress/atom NULL 
+compute	       peratomstressvolke WATER stress/atom NULL ke 
+compute        peratomstressvolkspace WATER stress/atom NULL kspace
+compute        peratomstressvolfix WATER stress/atom NULL fix 
+compute        peratomvol WATER voronoi/atom
+
+variable       peratompress         atom (c_peratomstressvol[1]+c_peratomstressvol[2]+c_peratomstressvol[3])
+variable       peratompresske       atom (c_peratomstressvolke[1]+c_peratomstressvolke[2]+c_peratomstressvolke[3])
+variable       peratompresskspace   atom (c_peratomstressvolkspace[1]+c_peratomstressvolkspace[2]+c_peratomstressvolkspace[3])
+variable       peratompressfix      atom (c_peratomstressvolfix[1]+c_peratomstressvolfix[2]+c_peratomstressvolfix[3])
+compute        totalpressure all reduce sum c_peratomstressvol[1] c_peratomstressvol[2] c_peratomstressvol[3]
+variable actualdensity equal density*vol/(v_PISTON_AREA*(v_zHIWALL-v_zLOWALL))
+variable press equal -(c_totalpressure[1]+c_totalpressure[2]+c_totalpressure[3])/(3*v_PISTON_AREA*(v_zHIWALL-v_zLOWALL))
+dump waterdata WATER custom/gz 10000 pressure/pressuredata.*.gz id mol type mass q x y z v_peratompress v_peratompresske v_peratompresskspace v_peratompressfix c_peratomstressvol[1] c_peratomstressvol[2] c_peratomstressvol[3] c_peratomstressvolke[1] c_peratomstressvolke[2] c_peratomstressvolke[3] c_peratomstressvolkspace[1] c_peratomstressvolkspace[2] c_peratomstressvolkspace[3] c_peratomstressvolfix[1] c_peratomstressvolfix[2] c_peratomstressvolfix[3] c_peratomvol[1]
+dump_modify waterdata sort 2
+
+velocity all create 300.0 12345
+run 0                      
+velocity all scale 300.0 
+restart 10000 restarts/restart.*
+# Run hydration experiment
+write_data test.lmps
+thermo_style custom step temp lx ly lz f_zwalls[1] f_zwalls[2] v_zLOWALL v_zHIWALL v_press_wall_lo v_press_wall_hi v_press v_actualdensity v_PISTON_AREA
+#thermo_style custom step temp lx ly lz press density 
+thermo 1000
+fix 1 WATER npt temp 300 300 200 x 1.0 1.0 2000 y 1.0 1.0 2000 couple xy
+#fix 1 all nvt temp 300 300 200
+fix FXSHAKE WATER shake 0.0001 10 0 b 17 a 22 t 5 8 14
+run 1000000
+unfix 1
+

@@ -1,0 +1,132 @@
+# General 
+units            real
+atom_style       full
+dimension        3
+newton           off
+boundary         p p p
+
+# Styles
+pair_style       lj/charmm/coul/long 10.0 12.0
+pair_modify      shift no mix arithmetic
+kspace_style     pppm 1.0e-4
+kspace_modify    diff ad
+bond_style       harmonic
+angle_style      harmonic
+dihedral_style   charmm
+improper_style   harmonic
+special_bonds    charmm
+
+read_restart hydr/restarts/restart.*
+molecule mol1 ../../molecules/tip3p.mol
+run 0
+dielectric 1.0
+neighbor 4.0 bin
+neigh_modify delay 0 every 1 check yes one 4000
+timestep 2.0
+run_style verlet
+
+pair_coeff 15 15 0.155865 3.178
+pair_coeff 16 16 0.00000 0.000000
+bond_coeff 17 4.50000000e+02 1.011800000e+00
+angle_coeff 22 5.50000000e+01 1.08150000e+02
+angle_coeff 23 5.50000000e+01 1.08150000e+02
+set type 15 charge -0.84844
+set type 16 charge 0.42422 
+set type 4 charge -0.587508921
+
+variable PISTON_AREA equal  (xhi-xlo)*(yhi-ylo)
+variable FinMD_to_FinN equal 6.94768717535204e-11
+variable ATM_to_nm2 equal 101325
+variable ANG_to_M equal 1e-10
+
+delete_atoms group LOzwall
+delete_atoms group HIzwall
+
+
+change_box all z final -300 300 units box
+displace_atoms all move 0 0 -86.5 units box
+change_box all z final -225 175 units box
+
+region FLUID block INF INF INF INF -155 155 side out units box
+lattice fcc 4.882444444
+create_atoms 0 region FLUID mol mol1 322
+
+region EDGEPROTECT block INF INF INF INF $(zlo+1) $(zhi-1) units box side out
+group deleteatoms region EDGEPROTECT
+delete_atoms group deleteatoms mol yes
+
+change_box all z delta -12 12 units box
+
+lattice hcp 3.994727273
+region zwallLO block INF INF INF INF $(zlo) $(zlo+3.994727273*.75) units box
+create_atoms 17 region zwallLO 
+group LOzwall1 type 17
+group LOzwall2 region zwallLO
+group LOzwall intersect LOzwall1 LOzwall2
+group LOzwall1 delete
+group LOzwall2 delete
+
+region zwallHI block INF INF INF INF $(zhi-3.994727273*.75) $(zhi) units box
+create_atoms 17 region zwallHI
+group HIzwall1 type 17
+group HIzwall2 region zwallHI
+group HIzwall intersect HIzwall1 HIzwall2
+group HIzwall1 delete
+group HIzwall2 delete
+
+group WALLS union LOzwall HIzwall
+
+change_box all z delta -50 50 units box
+fix tether PINplane spring/self 427.6 
+fix miniSETFORCE WALLS setforce 0 0 0
+minimize         1.0e-8 1.0e-8 1000 100000
+unfix miniSETFORCE
+unfix tether
+reset_atom_ids
+
+group WATER delete
+group WATER type 15 16
+group SOLID subtract all WATER WALLS
+
+fix tether PINplane spring/self 427.6 
+variable APPL_PRESS_FEED equal ${FEEDP}*${ATM_to_nm2}/count(LOzwall)
+variable APPL_PRESS_PERM equal 100*${ATM_to_nm2}/count(HIzwall)
+
+variable pos_HYDRATE_FORCE equal ${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_FEED}/${FinMD_to_FinN}
+variable neg_HYDRATE_FORCE equal -${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_PERM}/${FinMD_to_FinN}
+
+fix FEEDFORCEset LOzwall setforce  0.0 0.0 NULL
+fix PERMFORCEset HIzwall setforce  0.0 0.0 NULL
+
+fix FEEDFORCE LOzwall aveforce  NULL NULL v_pos_HYDRATE_FORCE
+fix PERMFORCE HIzwall aveforce  NULL NULL v_neg_HYDRATE_FORCE
+
+compute        peratomstressvol all stress/atom NULL 
+compute        peratomvol all voronoi/atom
+compute        peratomdisplacement all displace/atom 
+
+variable       peratompress         atom (c_peratomstressvol[1]+c_peratomstressvol[2]+c_peratomstressvol[3])
+compute        totalpressure WATER reduce sum c_peratomstressvol[1] c_peratomstressvol[2] c_peratomstressvol[3]
+compute        peratommass all property/atom mass
+compute        totalmass WATER reduce sum c_peratommass
+compute        totalvol WATER reduce sum c_peratomvol[1]
+
+variable actualdensity equal c_totalmass*(1e8)^3/(6.022e23*c_totalvol)
+variable press equal -(c_totalpressure[1]+c_totalpressure[2]+c_totalpressure[3])/(3*c_totalvol)
+dump waterdata WATER custom/gz 5000 perm_v2/pressure/pressuredata.*.gz id mol type mass q x y z xu yu zu vx vy vz v_peratompress c_peratomvol[1] c_peratomdisplacement[1] c_peratomdisplacement[2] c_peratomdisplacement[3]
+dump systemdata all custom/gz 5000 perm_v2/system/systemdata.*.gz id mol type mass q x y z vx vy vz v_peratompress c_peratomvol[1]
+dump membranedata SOLID custom/gz 5000 perm_v2/membrane/membranedata.*.gz id mol type mass q x y z v_peratompress c_peratomvol[1]
+dump_modify waterdata sort 2
+dump_modify systemdata sort 2
+restart 5000 perm_v2/restarts/restart.*
+
+
+
+thermo 5000
+fix 1 all nvt temp 300 300 200
+
+thermo_style custom step temp press v_press v_actualdensity c_totalvol
+fix FXSHAKE all rattle 0.0001 20 5000 b 17 a 22 t 5
+
+run 10000000
+unfix 1

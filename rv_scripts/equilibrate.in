@@ -1,0 +1,171 @@
+# General
+units            real
+atom_style       full
+dimension        3
+newton           off
+boundary         p p p
+
+
+# Styles
+pair_style       lj/charmm/coul/long 7.0 9.0
+pair_modify      shift no mix sixthpower
+kspace_style     pppm 1.0e-4
+kspace_modify    diff ad
+bond_style       harmonic
+angle_style      harmonic
+dihedral_style   charmm
+improper_style   harmonic
+special_bonds    charmm
+
+
+
+# System definition
+read_data poly/term_final.lmps
+
+group EXCESSOHCL type 11 13 18
+delete_atoms group EXCESSOHCL bond yes
+reset_atom_ids 
+
+# Settings
+dielectric 1.0
+neighbor 2.0 bin
+neigh_modify delay 0 every 1 check yes
+timestep 1.0
+run_style verlet
+
+variable Pmax equal 50000
+variable Pvar index 1 1 100 1000 2000 5000 10000 15000 20000 25000 30000 35000 40000 45000 50000
+variable NVTmaxyes equal false
+variable NVTambyes equal false
+variable NPTvaryes equal false 
+variable nup equal 1
+variable ndown equal 0
+variable nmax equal 0
+variable nsteps equal 50000
+variable rhoexpt equal 1.24
+thermo 5000
+min_style        cg
+min_modify       line quadratic
+minimize         1.0e-4 1.0e-4 10000 100000
+
+restart 50000 poly/restarts/polym_equil.restart
+fix FXSHAKE all shake 0.0001 10 0 b 17 a 22 t 5 8 14
+
+## Equilibration consists of three steps, repeated in succession
+## The first is an NVT run at excessive temperature to allow rearrangement
+## The second is an NVT at 300 K, the temperature at which pressure will be increased
+## The third is an NPT at 300 K and successively increased pressure to densify the polymer
+## These three as a loop are repeated until experimental density is acheived
+## After that the loop is repeated, reducing the pressure, and checking density
+## Should density reduce, sequence is repeated until experimental density is maintained through an equilibration period
+
+## Initial NVT at max temperature
+fix 1 all nvt temp 1000 1000 100
+velocity all create 1000 58447419
+run ${nsteps}
+unfix 1
+print "NVT max"
+variable NVTmaxyes equal true
+jump SELF loop
+
+## NVT at max temperature
+label NVTmax
+fix 1 all nvt temp 1000 1000 100
+velocity all scale 1000
+run ${nsteps}
+unfix 1
+print "NVT max"
+variable NVTmaxyes equal true
+jump SELF loop
+
+## NVT at ambient temperature
+label NVTamb
+variable 2nsteps equal ${nsteps}*2
+fix 1 all nvt temp 300 300 100
+velocity all scale 300
+run ${2nsteps}
+unfix 1
+print "NVT ambient"
+variable NVTambyes equal true
+jump SELF loop
+
+## NPT at ambient temperature and variable pressure
+label NPTvar
+unfix FXSHAKE
+minimize         1.0e-4 1.0e-4 10000 100000
+variable Pvar1 equal ${Pvar}
+next Pvar
+variable Pvar2 equal ${Pvar}
+fix FXSHAKE all shake 0.0001 10 0 b 17 a 22 t 5 8 14
+fix 1 all npt temp 300 300 100 iso ${Pvar1} ${Pvar2} 100
+velocity all scale 300
+run ${nsteps}
+unfix 1
+print "NPT variable"
+variable NPTvaryes equal true
+jump SELF loop
+
+
+## Equilibrate at 1 bar 
+label equil 
+fix 1 all npt temp 300 300 100 iso 1 1 100
+velocity all scale 300
+run 100000
+print "Equilibration"
+unfix 1
+variable rho equal density
+write_data init_equil_polym.lmps
+if "${rho}>=${rhoexpt}" then &
+    "jump SELF finish" &
+else "jump SELF loop"
+
+## Loop to perform sensitive density equilibration
+label loop
+variable rho equal density
+print "Rampup loop number: ${nup}"
+print "Rampdown loop number: ${ndown}"
+print "Max pressure loop number: ${nmax}"
+print "Polymer density: ${rho}"
+print "Applied Pressure: ${Pvar}"
+print "Number of timesteps: ${nsteps}"
+write_data poly/pre_equil_polymer.lmps
+
+if "${NVTmaxyes} == 0" then &
+    "jump SELF NVTmax"
+
+if "${NVTambyes} == 0" then &
+    "jump SELF NVTamb"
+
+if "${NPTvaryes} == 0" then &
+    "jump SELF NPTvar"
+
+variable NVTmaxyes equal false
+variable NVTambyes equal false
+variable NPTvaryes equal false 
+variable rho equal density
+
+if "${rho}>=${rhoexpt}" then &
+    "if '${Pvar}>=1000' then 'jump SELF equil'" &
+else &
+    "jump SELF rampup"
+
+label rampup
+if "${Pvar} < ${Pmax}" then &
+    "variable nup equal ${nup}+1" &
+elif "${Pvar} == ${Pmax}" &
+    "variable nmax equal ${nmax}+1"
+variable nsteps equal 50000
+jump SELF loop
+
+## Finish and print density
+label finish
+fix 1 all npt temp 300 300 100 iso 1 1 100
+velocity all scale 300
+write_data poly/pre_equil_polymer.lmps
+run 500000
+print "Final Equilibration"
+unfix 1
+if "${rho}<=${rhoexpt}" then &
+    "jump SELF loop"
+print "Final density = ${rho}"
+write_data poly/equil_polymer.lmps

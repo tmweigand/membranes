@@ -1,0 +1,118 @@
+# General MUST DEFINE VARIABLES mult AND rand USING THE -v FLAG IN COMMAND LINE CALL TO LMPS
+units            real
+atom_style       full
+dimension        3
+newton           off
+boundary         p p p
+
+
+# Styles
+pair_style       lj/charmm/coul/long 10.0 12.0
+pair_modify      shift no mix sixthpower
+kspace_style     pppm 1.0e-4
+kspace_modify    diff ad
+bond_style       harmonic
+angle_style      harmonic
+dihedral_style   charmm
+improper_style   harmonic
+special_bonds    charmm
+
+# System definition
+read_data ../../molecules/tip3p.lmps 
+
+dielectric 1.0
+neighbor 4.0 bin
+neigh_modify delay 0 every 1 check yes one 4000
+timestep 2.0
+run_style verlet
+pair_coeff 17 17 0.001 3.407 
+region bawks block  INF INF INF INF INF INF units box
+delete_atoms region bawks
+change_box all x final 0 39 y final 0 39 z final -149.1570499372384 149.1570499372384 units box
+change_box all boundary p p f
+kspace_modify slab 3.0
+lattice fcc 4.982091
+region bawks delete
+region bawks block  INF INF INF INF -144 144 units box
+molecule mol1 ../../molecules/tip3p.mol
+create_atoms 0 region bawks mol mol1 322
+
+variable zLOWALL internal -149.1570499372384
+variable zHIWALL internal 149.1570499372384
+variable GRAPHENE_LATTICE_CONST equal 2.46
+lattice hcp ${GRAPHENE_LATTICE_CONST}
+
+region zwallLO block INF INF INF INF $(v_zLOWALL) $(v_zLOWALL+v_GRAPHENE_LATTICE_CONST*.9) units box
+
+create_atoms 17 region zwallLO 
+group LOzwall1 type 17
+group LOzwall2 region zwallLO
+group LOzwall intersect LOzwall1 LOzwall2
+group LOzwall1 delete
+group LOzwall2 delete
+
+region zwallHI block INF INF INF INF $(v_zHIWALL-v_GRAPHENE_LATTICE_CONST*.9) $(v_zHIWALL) units box
+create_atoms 17 region zwallHI
+group HIzwall1 type 17
+group HIzwall2 region zwallHI
+group HIzwall intersect HIzwall1 HIzwall2
+group HIzwall1 delete
+group HIzwall2 delete
+
+group graphene type 17
+group WATER type 15 16
+group mobile subtract all graphene
+fix setForceMinimize graphene setforce 0 0 0
+
+variable PISTON_AREA equal  (xhi-xlo)*(yhi-ylo)
+variable FinMD_to_FinN equal 6.94768717535204e-11
+variable ATM_to_nm2 equal 101325
+variable ANG_to_M equal 1e-10
+fix zwalls all wall/lj126 zlo EDGE 0.102 3.188 12 zhi EDGE 0.102 3.188 12 units box 
+fix_modify zwalls energy yes
+group WATER type 15 16
+minimize         1.0e-8 1.0e-8 1000 100000
+timestep 2.0
+unfix setForceMinimize
+
+fix FEEDFORCE LOzwall setforce  0.0 0.0 0.0
+fix PERMFORCE HIzwall setforce  0.0 0.0 0.0
+
+compute LOWALLcom LOzwall com
+compute HIWALLcom HIzwall com
+compute LOWALLforce LOzwall group/group WATER
+compute HIWALLforce HIzwall group/group WATER
+variable press_wall_lo equal -c_LOWALLforce[3]*${FinMD_to_FinN}/(${ATM_to_nm2}*${PISTON_AREA}*${ANG_to_M}*${ANG_to_M})
+variable press_wall_hi equal c_HIWALLforce[3]*${FinMD_to_FinN}/(${ATM_to_nm2}*${PISTON_AREA}*${ANG_to_M}*${ANG_to_M})
+
+#Collect sufficient data for morphological analysis
+compute        peratomstressvol all stress/atom NULL 
+compute        peratomvol all voronoi/atom
+variable       peratompress         atom (c_peratomstressvol[1]+c_peratomstressvol[2]+c_peratomstressvol[3])
+compute        totalpressure all reduce sum c_peratomstressvol[1] c_peratomstressvol[2] c_peratomstressvol[3]
+compute        waterpressure WATER reduce sum c_peratomstressvol[1] c_peratomstressvol[2] c_peratomstressvol[3]
+compute        peratommass WATER property/atom mass
+compute        totalmass WATER reduce sum c_peratommass
+run 0    
+variable actualdensity equal c_totalmass*(1e8)^3/(6.022e23*v_PISTON_AREA*(c_HIWALLcom[3]-c_LOWALLcom[3]))
+variable totalpress equal -(c_totalpressure[1]+c_totalpressure[2]+c_totalpressure[3])/(3*v_PISTON_AREA*(c_HIWALLcom[3]-c_LOWALLcom[3]))
+variable waterpress equal -(c_waterpressure[1]+c_waterpressure[2]+c_waterpressure[3])/(3*v_PISTON_AREA*(c_HIWALLcom[3]-c_LOWALLcom[3]))
+dump waterdata WATER custom/gz 100 water/pressuredata.*.gz id mol type mass q x y z v_peratompress c_peratomvol[1]
+dump systemdata all custom/gz 100 system/pressuredata.*.gz id mol type mass q x y z v_peratompress c_peratomvol[1]
+dump_modify waterdata sort 2
+dump_modify waterdata format 9 %20.15e
+dump_modify systemdata format 9 %20.15e
+restart 10000 restarts/restart.*
+neigh_modify exclude type 17 17
+# Run hydration experiment
+write_data test.lmps
+thermo_style custom c_LOWALLcom[3] c_HIWALLcom[3] v_actualdensity
+run 0
+thermo_style custom step temp press v_press_wall_lo v_press_wall_hi v_totalpress v_waterpress
+thermo 100
+#fix 1 WATER npt temp 300 300 200 x 1.0 1.0 2000 y 1.0 1.0 2000 couple xy
+fix 1 WATER nvt temp 300 300 200
+fix FXSHAKE WATER shake 0.0001 10 0 b 17 a 22 t 5 8 14
+run 10000000
+unfix 1
+

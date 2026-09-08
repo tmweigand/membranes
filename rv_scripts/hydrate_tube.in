@@ -1,0 +1,80 @@
+# General 
+units            real
+atom_style       full
+dimension        3
+newton           off
+boundary         p p p
+
+
+# Styles
+pair_style       lj/charmm/coul/long 10.0 12.0
+pair_modify      shift no mix arithmetic
+kspace_style     pppm 1.0e-4
+kspace_modify    diff ad
+bond_style       harmonic
+angle_style      harmonic
+dihedral_style   charmm
+improper_style   harmonic
+special_bonds    charmm
+
+# System definition
+read_data ${fileIN}
+
+dielectric 1.0
+neighbor 4.0 bin
+neigh_modify delay 0 every 1 check yes one 4000
+timestep 1.0
+run_style verlet
+
+# Set Graphene lattice constant variable for use as pistons and backing layer
+variable GRAPHENE_LATTICE_CONST equal 3.56717843
+
+# Set lattice constant for use in packing waters into feed/permeate
+lattice fcc 4.8
+variable FinMD_to_FinN equal 6.94768717535204e-11
+variable ANG_to_M equal 1e-10
+variable ATM_to_nm2 equal 101325
+
+group WATER type 15 16
+group graphene type 17
+fix setForceMinimize graphene setforce 0 0 0
+minimize         0 0 100000 1000000
+min_style sd
+minimize	 0 0 100000 1000000
+min_style cg     
+minimize         1.0e-8 1.0e-8 20000 1000000
+min_style sd
+minimize         1.0e-8 1.0e-8 20000 1000000
+
+unfix setForceMinimize
+
+#Pressurize system with pistons
+
+#Collect sufficient data for morphological analysis
+compute        peratomstressvol WATER stress/atom NULL 
+compute        peratomvol WATER voronoi/atom
+variable       peratompress         atom (c_peratomstressvol[1]+c_peratomstressvol[2]+c_peratomstressvol[3])
+
+dump waterdata WATER custom/gz 5000 hydr/water/pressuredata.*.gz id mol type mass q x y z vx vy vz v_peratompress c_peratomvol[1]
+dump_modify waterdata sort 2
+dump_modify waterdata format 9 %20.15e
+
+
+# Run hydration experiment
+write_data test.lmps
+write_restart hydr/restarts/restart.*
+restart 10000 hydr/restarts/restart.*
+neigh_modify exclude type 17 17
+
+thermo_style custom step temp press density 
+thermo 5000
+fix grapheneset graphene setforce  0.0 0.0 0.0
+
+fix 1 all npt temp 300 300 200 z 100.0 100.0 2000
+fix FXSHAKE WATER shake 0.0001 10 0 b 17 a 22 t 5 8 14
+
+
+run 1000000
+unfix 1
+
+

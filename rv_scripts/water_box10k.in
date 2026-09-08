@@ -1,0 +1,70 @@
+# General MUST DEFINE VARIABLES mult AND rand USING THE -v FLAG IN COMMAND LINE CALL TO LMPS
+units            real
+atom_style       full
+dimension        3
+newton           off
+boundary         p p p
+
+
+# Styles
+pair_style       lj/charmm/coul/long 10.0 12.0
+pair_modify      shift no mix sixthpower
+kspace_style     pppm 1.0e-4
+kspace_modify    diff ad
+bond_style       harmonic
+angle_style      harmonic
+dihedral_style   charmm
+improper_style   harmonic
+special_bonds    charmm
+
+# System definition
+read_data ../../molecules/tip3p.lmps 
+pair_coeff * 16 0.0 0.0 0.0 0.0
+pair_coeff 16 * 0.0 0.0 0.0 0.0
+
+pair_coeff * 15 0.102 3.188 0.102 3.188
+pair_coeff 15 * 0.102 3.188 0.102 3.188
+dielectric 1.0
+neighbor 4.0 bin
+neigh_modify delay 0 every 1 check yes one 4000
+timestep 2.0
+run_style verlet
+
+region bawks block  INF INF INF INF INF INF units box
+delete_atoms region bawks
+change_box all x final 0 45 y final 0 45 z final 0 45 units box
+lattice fcc 4.3
+region bawks delete
+region bawks block  INF INF INF INF INF INF units box
+molecule mol1 ../../molecules/tip3p.mol
+create_atoms 0 box mol mol1 322
+
+group WATER type 15 16
+minimize         1.0e-8 1.0e-8 10000 100000
+timestep 2.0
+
+
+#Collect sufficient data for morphological analysis
+compute        peratomstressvol WATER stress/atom NULL 
+compute	       peratomstressvolke WATER stress/atom NULL ke 
+compute        peratomstressvolkspace WATER stress/atom NULL kspace
+compute        peratomstressvolfix WATER stress/atom NULL fix 
+compute        peratomvol WATER voronoi/atom
+
+variable       peratompress         atom (c_peratomstressvol[1]+c_peratomstressvol[2]+c_peratomstressvol[3])
+variable       peratompresske       atom (c_peratomstressvolke[1]+c_peratomstressvolke[2]+c_peratomstressvolke[3])
+variable       peratompresskspace   atom (c_peratomstressvolkspace[1]+c_peratomstressvolkspace[2]+c_peratomstressvolkspace[3])
+variable       peratompressfix      atom (c_peratomstressvolfix[1]+c_peratomstressvolfix[2]+c_peratomstressvolfix[3])
+
+dump waterdata WATER custom/gz 10000 pressure/pressuredata.*.gz id mol type mass q x y z v_peratompress v_peratompresske v_peratompresskspace v_peratompressfix c_peratomstressvol[1] c_peratomstressvol[2] c_peratomstressvol[3] c_peratomstressvolke[1] c_peratomstressvolke[2] c_peratomstressvolke[3] c_peratomstressvolkspace[1] c_peratomstressvolkspace[2] c_peratomstressvolkspace[3] c_peratomstressvolfix[1] c_peratomstressvolfix[2] c_peratomstressvolfix[3] c_peratomvol[1]
+dump_modify waterdata sort 2
+
+# Run hydration experiment
+write_data test.lmps
+thermo_style custom step temp epair emol etotal press density
+thermo 1000
+fix 1 WATER npt temp 300 300 200 iso 10000.0 10000.0 2000
+#fix FXSHAKE WATER shake 0.0001 10 0 b 17 a 22 t 5 8 14
+run 1000000
+unfix 1
+

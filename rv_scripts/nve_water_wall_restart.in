@@ -1,0 +1,104 @@
+# General MUST DEFINE VARIABLES mult AND rand USING THE -v FLAG IN COMMAND LINE CALL TO LMPS
+units            real
+atom_style       full
+dimension        3
+newton           on
+boundary         p p p
+
+
+# Styles
+pair_style       lj/charmm/coul/long 10.0 12.0
+pair_modify      shift no mix arithmetic
+kspace_style     pppm 1.0e-4
+kspace_modify    diff ad
+bond_style       harmonic
+angle_style      harmonic
+dihedral_style   charmm
+improper_style   harmonic
+special_bonds    charmm
+
+# System definition
+read_restart restarts/restart.890000
+
+dielectric 1.0
+neighbor 4.0 bin
+neigh_modify delay 0 every 1 check yes one 4000
+timestep 2.0
+run_style verlet
+lattice fcc 5.0
+
+variable PISTON_AREA equal  (xhi-xlo)*(yhi-ylo)
+variable FinMD_to_FinN equal 6.94768717535204e-11
+variable ATM_to_nm2 equal 101325
+variable ANG_to_M equal 1e-10
+
+group WATER type 15 16
+timestep 2.0
+
+#Collect sufficient data for morphological analysis
+compute        peratomstressvol WATER stress/atom NULL 
+compute        peratomvol WATER voronoi/atom
+
+variable       peratompress         atom (c_peratomstressvol[1]+c_peratomstressvol[2]+c_peratomstressvol[3])
+compute        totalpressure all reduce sum c_peratomstressvol[1] c_peratomstressvol[2] c_peratomstressvol[3]
+
+dump waterdata WATER custom/gz 5000 water/pressuredata.*.gz id mol type mass q x y z v_peratompress c_peratomvol[1]
+dump_modify waterdata sort 2
+dump_modify waterdata format 9 %20.15e
+# Run hydration experiment
+restart 10000 restarts/restart.*
+
+
+region low_wall block INF INF INF INF $(zlo+0.5) $(zlo+5.5) units box
+region high_wall block INF INF INF INF  $(zhi-5.5) $(zhi-0.5) units box
+region deleting block INF INF INF INF  $(zlo+0.5) $(zhi-0.5) units box side out
+
+group low_wall_water region low_wall
+group high_wall_water region high_wall
+group low_wall_water include molecule
+group high_wall_water include molecule
+group delete_water region deleting
+group delete_water include molecule
+delete_atoms group delete_water
+reset_atom_ids
+group inside_water subtract all low_wall_water high_wall_water
+group inside_water include molecule
+
+change_box all z delta -10 10
+print $(count(low_wall_water))
+print $(count(high_wall_water))
+print $(count(inside_water))
+print $(count(all))
+print $(count(WATER))
+
+variable APPL_PRESS_FEED equal 100*${ATM_to_nm2}/count(low_wall_water)
+variable APPL_PRESS_PERM equal 100*${ATM_to_nm2}/count(high_wall_water)
+variable pos_HYDRATE_FORCE equal ${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_FEED}/${FinMD_to_FinN}
+variable neg_HYDRATE_FORCE equal -${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_PERM}/${FinMD_to_FinN}
+
+compute        waterpressure inside_water reduce sum c_peratomstressvol[1] c_peratomstressvol[2] c_peratomstressvol[3]
+compute        watervolume inside_water reduce sum c_peratomvol[1]
+variable waterpress equal -(c_waterpressure[1]+c_waterpressure[2]+c_waterpressure[3])/(3*c_watervolume)
+compute        checkpressure all reduce sum c_peratomstressvol[1] c_peratomstressvol[2] c_peratomstressvol[3]
+compute        checkvolume all reduce sum c_peratomvol[1]
+variable checkpress equal -(c_checkpressure[1]+c_checkpressure[2]+c_checkpressure[3])/(3*vol)
+compute LOWALLforce low_wall_water group/group inside_water
+compute HIWALLforce high_wall_water group/group inside_water
+variable press_wall_lo equal -c_LOWALLforce[3]*${FinMD_to_FinN}/(${ATM_to_nm2}*${PISTON_AREA}*${ANG_to_M}*${ANG_to_M})
+variable press_wall_hi equal c_HIWALLforce[3]*${FinMD_to_FinN}/(${ATM_to_nm2}*${PISTON_AREA}*${ANG_to_M}*${ANG_to_M})
+velocity low_wall_water set NULL NULL 0.0
+velocity high_wall_water set NULL NULL 0.0
+fix low_wall_water_fix low_wall_water aveforce NULL NULL v_pos_HYDRATE_FORCE
+fix high_wall_water_fix high_wall_water aveforce NULL NULL v_neg_HYDRATE_FORCE
+
+fix 2lowall low_wall_water temp/berendsen 300.0 300.0 200
+fix 2hiwall high_wall_water temp/berendsen 300.0 300.0 200
+fix 2 inside_water temp/berendsen 300.0 300.0 200
+
+thermo_style custom step temp c_2_temp press v_waterpress v_checkpress v_press_wall_lo v_press_wall_hi
+thermo 5000
+fix FXSHAKE WATER shake 0.0001 10 0 b 17 a 22 t 5 8 14
+fix 1 WATER nve
+run 10000000
+unfix 1
+

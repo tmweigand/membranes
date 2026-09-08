@@ -1,0 +1,135 @@
+# General MUST DEFINE VARIABLES mult AND rand USING THE -v FLAG IN COMMAND LINE CALL TO LMPS
+units            real
+atom_style       full
+dimension        3
+newton           off
+boundary         p p f
+
+
+# Styles
+pair_style       lj/charmm/coul/charmm 10.0 12.0
+pair_modify      shift no mix sixthpower
+#kspace_style     pppm 1.0e-4
+#kspace_modify    diff ik
+#kspace_modify slab nozforce
+bond_style       harmonic
+angle_style      harmonic
+dihedral_style   charmm
+improper_style   harmonic
+special_bonds    charmm
+
+# System definition
+read_data data.lmps
+
+
+dielectric 1.0
+neighbor 4.0 bin
+#neigh_modify delay 0 every 1 check yes
+timestep 1.0
+run_style verlet
+
+# Set Graphene lattice constant variable for use as pistons and backing layer
+variable GRAPHENE_LATTICE_CONST equal 2.46
+
+# Set lattice constant for use in packing waters into feed/permeate
+lattice fcc 4.3
+variable FinMD_to_FinN equal 6.94768717535204e-11
+variable ANG_to_M equal 1e-10
+variable ATM_to_nm2 equal 101325
+variable mult1d equal ${mult}^(1/3)
+variable mult2d equal ${mult}^(2/3)
+
+
+# Group all water together and all membrane atoms together
+group WATER type 15 16
+
+# Create HI and LO piston groups and mobile groups 
+region zwallLO block INF INF INF INF $(zlo) 0 units box
+group LOzwall1 type 17
+group LOzwall2 region zwallLO
+group LOzwall intersect LOzwall1 LOzwall2
+group LOzwall1 delete
+group LOzwall2 delete
+
+region zwallHI block INF INF INF INF 0 $(zhi) units box
+group HIzwall1 type 17
+group HIzwall2 region zwallHI
+group HIzwall intersect HIzwall1 HIzwall2
+group HIzwall1 delete
+group HIzwall2 delete
+
+group zwalls union LOzwall HIzwall
+group mobile subtract all zwalls
+group membrane subtract mobile WATER
+
+#Create PINplane group in approximately the same way
+
+variable PIN_LOCATION equal 110
+region PINlayer block INF INF INF INF ${PIN_LOCATION} $(v_GRAPHENE_LATTICE_CONST+v_PIN_LOCATION) units box
+
+group PINplane1 type 1 2
+group PINplane2 region PINlayer
+group PINplane intersect PINplane1 PINplane2
+group PINplane1 delete
+group PINplane2 delete
+
+# Fix previously identified pins via a spring in the z direction only 
+fix tether PINplane spring/self 427.6 
+change_box all boundary p p f
+run 0
+
+# REMOVE WHEN BOUNDARIES ARE STABLE
+change_box all z final -300 400 units box
+
+fix zwalls1 mobile wall/lj126 zlo EDGE 0.06844 3.40700 9 zhi EDGE 0.06844 3.40700 9 pbc yes
+fix_modify zwalls1 energy yes
+
+#Pressurize system with pistons
+variable APPL_PRESS_FEED equal 1300*${ATM_to_nm2}/count(LOzwall)
+variable APPL_PRESS_PERM equal 700*${ATM_to_nm2}/count(HIzwall)
+variable PISTON_AREA equal  ($(xhi)-$(xlo))*($(yhi)-$(ylo))
+variable pos_HYDRATE_FORCE equal ${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_FEED}/${FinMD_to_FinN}
+variable neg_HYDRATE_FORCE equal -${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_PERM}/${FinMD_to_FinN}
+fix FEEDPISTON LOzwall rigid single torque * off off off force * off off on 
+fix PERMPISTON HIzwall rigid single torque * off off off force * off off on 
+
+fix FEEDFORCE LOzwall addforce  0.0 0.0 v_pos_HYDRATE_FORCE
+fix PERMFORCE HIzwall addforce  0.0 0.0 v_neg_HYDRATE_FORCE
+
+#Collect sufficient data for morphological analysis
+#fix balance1 all balance 0 1.0 shift z 10 1.1
+#compute        peratomstressvol mobile stress/atom NULL 
+#compute	       peratomstressvolke mobile stress/atom NULL ke 
+#compute        peratomstressvolkspace mobile stress/atom NULL kspace
+#compute        peratomstressvolfix mobile stress/atom NULL fix 
+#compute        peratomvol mobile voronoi/atom
+
+#variable       peratompress         atom (c_peratomstressvol[1]+c_peratomstressvol[2]+c_peratomstressvol[3])
+#variable       peratompresske       atom (c_peratomstressvolke[1]+c_peratomstressvolke[2]+c_peratomstressvolke[3])
+#variable       peratompresskspace   atom (c_peratomstressvolkspace[1]+c_peratomstressvolkspace[2]+c_peratomstressvolkspace[3])
+#variable       peratompressfix      atom (c_peratomstressvolfix[1]+c_peratomstressvolfix[2]+c_peratomstressvolfix[3])
+
+#dump waterdata WATER custom/gz 100000 perm/water/pressuredata.*.gz id mol type mass q x y z vx vy vz v_peratompress v_peratompresske v_peratompresskspace v_peratompressfix c_peratomstressvol[1] c_peratomstressvol[2] c_peratomstressvol[3] c_peratomstressvolke[1] c_peratomstressvolke[2] c_peratomstressvolke[3] c_peratomstressvolkspace[1] c_peratomstressvolkspace[2] c_peratomstressvolkspace[3] c_peratomstressvolfix[1] c_peratomstressvolfix[2] c_peratomstressvolfix[3] c_peratomvol[1]
+#dump_modify waterdata sort 2
+#dump membranedata membrane custom/gz 100000 perm/membrane/membranedata.*.gz id mol type mass q x y z vx vy vz v_peratompress v_peratompresske v_peratompresskspace v_peratompressfix c_peratomstressvol[1] c_peratomstressvol[2] c_peratomstressvol[3] c_peratomstressvolke[1] c_peratomstressvolke[2] c_peratomstressvolke[3] c_peratomstressvolkspace[1] c_peratomstressvolkspace[2] c_peratomstressvolkspace[3] c_peratomstressvolfix[1] c_peratomstressvolfix[2] c_peratomstressvolfix[3] c_peratomvol[1]
+#dump_modify membranedata sort 1
+#dump systemdata all custom/gz 10 perm/system/systemdata.*.gz id mol type mass q x y z
+#dump_modify systemdata sort 1
+
+# Run hydration experiment
+#reset_atom_ids
+
+restart 100000 perm/restarts/restart.*
+#neigh_modify exclude type 17 17
+
+fix FXSHAKE mobile shake 0.0001 10 0 b 17 a 22 t 5 8 14
+fix 1 mobile nvt/gpu temp 300 300 200
+#fix FXSHAKE mobile rattle 0.0001 10 0 b 17 a 22 t 5 8 14
+thermo 10
+timestep 1.0
+write_data test.lmps
+run 100
+run 100
+unfix 1 
+
+

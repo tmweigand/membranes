@@ -3,3 +3,6 @@ data/sample_bridges_data*/
 data/
 data_out/
 __pycache__
+src/membranes.egg-info/*
+logs/
+.vscode/
