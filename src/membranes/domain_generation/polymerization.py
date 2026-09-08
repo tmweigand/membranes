@@ -4,16 +4,10 @@ Defines the PolymerizationSimulation class for TMC-MPD interfacial polymerizatio
 """
 
 import os
-import numpy as np
 from lammps import LMP_STYLE_GLOBAL, LMP_TYPE_VECTOR
 
-from membranes.domain_generation.lammps_init import LAMMPSInitialize
-from membranes.domain_generation.style_properties import StyleProperties
-from membranes.domain_generation.system_properties import SystemProperties
-
-
-def random_int() -> int:
-    return np.random.randint(1, 32768)
+from membranes.domain_generation.initialize import initialize_simulation
+from membranes.utils import random_int
 
 
 class PolymerizationSimulation:
@@ -22,12 +16,12 @@ class PolymerizationSimulation:
 
     Stages
     ------
-    1. pack_molecules  — place MPD and TMC into the simulation box
-    2. minimize        — steepest-descent then conjugate-gradient minimization
-    3. polymerize_pa   — amide (PA) bond formation via bond/react
-    4. add_hydroxide   — insert OH molecules to cap unreacted chloride sites
-    5. polymerize_oh   — TMC–OH bond formation via bond/react
-    6. cleanup         — remove excess atoms and write final data file
+    1. pack_molecules   — place MPD and TMC into the simulation box
+    2. minimize_packing — steepest-descent then conjugate-gradient minimization
+    3. polymerize_pa    — amide (PA) bond formation via bond/react
+    4. add_hydroxide    — insert OH molecules to cap unreacted chloride sites
+    5. polymerize_oh    — TMC-OH bond formation via bond/react
+    6. cleanup          — remove excess atoms and write final data file
     """
 
     # Atom counts per molecule
@@ -38,7 +32,8 @@ class PolymerizationSimulation:
     # Atom type indices
     AMIDE_TYPE = 7
     CL_TYPE = 18
-    EXCESS_TYPES = (11, 13, 18)
+    HYDROXIDE_ATOMS = (11, 13)
+    EXCESS_TYPES = (*HYDROXIDE_ATOMS, CL_TYPE)
 
     def __init__(
         self,
@@ -50,6 +45,7 @@ class PolymerizationSimulation:
         bond_distance: tuple[float, float] = (0.0, 5.0),
         stabilization: float = 0.03,
         max_cycles: int = 375,
+        seed: int | None = None,
     ):
         self.in_dir = in_dir
         self.multiple = multiple
@@ -59,35 +55,15 @@ class PolymerizationSimulation:
         self.bond_distance = bond_distance
         self.stabilization = stabilization
         self.max_cycles = max_cycles
+        self.seed = seed
 
-        self.out_dir = f"data_out/{in_dir}"
+        self.out_dir = f"data_out/{in_dir}/polymerization"
         os.makedirs(self.out_dir, exist_ok=True)
 
-        self._init_lammps()
-
-    # ------------------------------------------------------------------
-    # Initialisation
-    # ------------------------------------------------------------------
-
-    def _init_lammps(self):
-        wrapper = LAMMPSInitialize(
-            log_file="log.polymerize", units="real", atom_style="full"
+        self.wrapper = initialize_simulation(
+            self.in_dir, log_file="logs/log.polymerization"
         )
-        self.lmp = wrapper.lmp
-
-        if self.in_dir == "rv":
-            StyleProperties(
-                lmp=self.lmp,
-                dihedral_style="charmm",
-                improper_style="harmonic",
-                special_bonds="charmm",
-            )
-        else:
-            StyleProperties(lmp=self.lmp)
-
-        self.system = SystemProperties(
-            self.lmp, dimension=3, n_atom_types=30, boundary=("p", "p", "p")
-        )
+        self.lmp = self.wrapper.lmp
 
     def _data_path(self, filename: str) -> str:
         return f"data_in/{self.in_dir}/{filename}"
@@ -139,7 +115,14 @@ class PolymerizationSimulation:
         # Place MPD
         self.lmp.cmd.lattice("fcc", 11.3)
         self.lmp.cmd.create_atoms(
-            0, "box", "subset", num_mpd, random_int(), "mol", "MPD", random_int()
+            0,
+            "box",
+            "subset",
+            num_mpd,
+            random_int(self.seed),
+            "mol",
+            "MPD",
+            random_int(self.seed),
         )
         self.lmp.cmd.group("MPDs", "union", "all")
 
@@ -158,10 +141,10 @@ class PolymerizationSimulation:
                 "box",
                 "subset",
                 num_tmc_needed,
-                random_int(),
+                random_int(self.seed),
                 "mol",
                 "TMC",
-                random_int(),
+                random_int(self.seed),
             )
             self.lmp.cmd.group("TMCs", "subtract", "all", "MPDs")
             self.lmp.cmd.delete_atoms("overlap", 1.0, "TMCs", "all", "mol", "yes")
@@ -178,7 +161,9 @@ class PolymerizationSimulation:
         self.lmp.cmd.reset_atoms("id")
 
         # Dump packing structure
-        self._dump("2", "logs/packing_structure.lammpstrj", freq=1000)
+        self._dump(
+            "2", f"{self.out_dir}/step_1_dump_random_monomers.lammpstrj", freq=1000
+        )
         self.lmp.cmd.run(0)
         self.lmp.cmd.undump("2")
 
@@ -186,7 +171,7 @@ class PolymerizationSimulation:
     # Stage 2 — minimization
     # ------------------------------------------------------------------
 
-    def minimize(self):
+    def minimize_packing(self):
         """Two-stage minimization: steepest descent then conjugate gradient."""
         self.lmp.cmd.dielectric(1.0)
         self.lmp.cmd.neighbor(2.0, "bin")
@@ -195,13 +180,21 @@ class PolymerizationSimulation:
         self.lmp.cmd.run_style("verlet")
 
         self.lmp.cmd.min_style("sd")
-        self.lmp.cmd.minimize(1.0e-5, 1.0e-5, 10000, 100000)
+        self.wrapper.minimize(
+            etol=1.0e-5,
+            ftol=1.0e-5,
+            maxiter=1_000,
+            maxeval=10_000,
+        )
 
         self.lmp.cmd.min_style("cg")
         self.lmp.cmd.min_modify("line", "quadratic")
-        self.lmp.cmd.minimize(1.0e-8, 1.0e-8, 10000, 100000)
-
-        self.lmp.cmd.write_data(f"{self.out_dir}/data.lmps")
+        self.wrapper.minimize(
+            etol=1e-8,
+            ftol=1e-8,
+            maxiter=1_000,
+            maxeval=10_000,
+        )
         self.lmp.cmd.timestep(1.0)
 
     # ------------------------------------------------------------------
@@ -248,11 +241,16 @@ class PolymerizationSimulation:
 
         # Equilibrate
         self.lmp.cmd.velocity("all", "scale", self.temperature)
-        self.lmp.cmd.fix(
-            1, "all", "nvt", "temp", self.temperature, self.temperature, 100.0
+        self.wrapper.fix_nvt(
+            fix_id=1,
+            group_id="all",
+            temperature_start=self.temperature,
+            temperature_end=self.temperature,
         )
         self._dump(
-            3, "logs/polymerization_structure.lammpstrj", freq=self.bond_frequency
+            3,
+            f"{self.out_dir}/step_3_dump_polymerized_monomers.lammpstrj",
+            freq=self.bond_frequency,
         )
 
         print("PA EQUILIBRATION RUN")
@@ -262,7 +260,6 @@ class PolymerizationSimulation:
         self.lmp.cmd.undump(3)
 
         self.lmp.cmd.reset_atoms("id")
-        self.lmp.cmd.write_data("logs/polym_clean.lmps")
 
         return max_bonds
 
@@ -272,7 +269,7 @@ class PolymerizationSimulation:
 
     def add_hydroxide(self, max_bonds: float):
         """Insert OH molecules to cap unreacted chloride sites."""
-        num_oh = int(max_bonds * 0.8)
+        num_oh = int(max_bonds * 1.8)
         print(f"NUMBER of OH: {num_oh}")
 
         self.lmp.cmd.region(
@@ -280,17 +277,28 @@ class PolymerizationSimulation:
         )
         self.lmp.cmd.molecule("OH", self._data_path("hydroxide.mol"))
         self.lmp.cmd.create_atoms(
-            0, "random", num_oh, random_int(), "new_box", "mol", "OH", random_int()
+            0,
+            "random",
+            num_oh,
+            random_int(self.seed),
+            "new_box",
+            "mol",
+            "OH",
+            random_int(self.seed),
         )
-        self.lmp.cmd.minimize(1.0e-4, 1.0e-4, 1000, 100000)
-        self.lmp.cmd.write_data("logs/term_data.lmps")
+        self.wrapper.minimize(
+            etol=1.0e-4,
+            ftol=1.0e-4,
+            maxiter=1_000,
+            maxeval=10_000,
+        )
 
     # ------------------------------------------------------------------
     # Stage 5 — OH polymerization
     # ------------------------------------------------------------------
 
     def polymerize_oh(self):
-        """Second cross-linking stage: TMC–OH bond formation."""
+        """Second cross-linking stage: TMC-OH bond formation."""
         self.lmp.cmd.molecule("mol3", self._data_path("TMC_OH_prerxn.mol"))
         self.lmp.cmd.molecule("mol4", self._data_path("TMC_OH_postrxn.mol"))
 
@@ -310,14 +318,21 @@ class PolymerizationSimulation:
         self.lmp.cmd.unfix("OHrxn")
 
         # Final equilibration
-        self.lmp.cmd.fix(
-            1, "all", "nvt", "temp", self.temperature, self.temperature, 100.0
+        self.wrapper.fix_nvt(
+            fix_id=1,
+            group_id="all",
+            temperature_start=self.temperature,
+            temperature_end=self.temperature,
         )
-        self._dump(4, "logs/OH_structure.lammpstrj", freq=10000)
+        self._dump(
+            4, f"{self.out_dir}/step_5_dump_polymerized_and_OH.lammpstrj", freq=10000
+        )
 
         print("FINAL EQUILIBRATION RUN")
         self.lmp.cmd.thermo_style("custom", "step temp press density")
-        self.lmp.cmd.run(50000, "upto")
+        final_time = 50000
+        if self.lmp.extract_global("ntimestep") < final_time:
+            self.lmp.cmd.run(final_time, "upto")
         self.lmp.cmd.undump(4)
         self.lmp.cmd.unfix(1)
 
@@ -331,7 +346,7 @@ class PolymerizationSimulation:
         self.lmp.cmd.group("EXCESSOHCL", "type", excess_types)
         self.lmp.cmd.delete_atoms("group", "EXCESSOHCL", "bond", "yes")
         self.lmp.cmd.reset_atoms("id")
-        self.lmp.cmd.write_data("logs/term_final.lmps")
+        self.lmp.cmd.write_data(f"{self.out_dir}/polymerization_final.lmps")
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -364,28 +379,46 @@ class PolymerizationSimulation:
         """One NVT + NPT cycle used inside each polymerization loop."""
         T = self.temperature
 
-        self.lmp.cmd.velocity("all", "create", T, random_int())
+        self.lmp.cmd.velocity("all", "create", T, random_int(self.seed))
 
-        self.lmp.cmd.fix(1, "statted_grp_REACT", "nvt", "temp", T, T, 100.0)
-        self.lmp.cmd.fix(4, "bond_react_MASTER_group", "temp/rescale", 50, T, T, 10, 1)
+        self.wrapper.fix_nvt(
+            fix_id=1,
+            group_id="statted_grp_REACT",
+            temperature_start=T,
+            temperature_end=T,
+        )
+
+        self.wrapper.fix_rescale_temp(
+            fix_id=4,
+            group_id="bond_react_MASTER_group",
+            n_steps=50,
+            temperature_start=T,
+            temperature_end=T,
+            window=10,
+            fraction=1,
+        )
         self.lmp.cmd.run(1000)
         self.lmp.cmd.unfix(1)
         self.lmp.cmd.unfix(4)
 
-        self.lmp.cmd.fix(
-            1,
-            "statted_grp_REACT",
-            "npt",
-            "temp",
-            T,
-            T,
-            100.0,
-            "iso",
-            0.5,
-            0.5,
-            100.0,
+        self.wrapper.fix_npt(
+            fix_id=1,
+            group_id="statted_grp_REACT",
+            temperature_start=T,
+            temperature_end=T,
+            pressure_start=0.5,
+            pressure_end=0.5,
         )
-        self.lmp.cmd.fix(4, "bond_react_MASTER_group", "temp/rescale", 50, T, T, 10, 1)
+
+        self.wrapper.fix_rescale_temp(
+            fix_id=4,
+            group_id="bond_react_MASTER_group",
+            n_steps=50,
+            temperature_start=T,
+            temperature_end=T,
+            window=10,
+            fraction=1,
+        )
         self.lmp.cmd.run(1000)
         self.lmp.cmd.unfix(1)
         self.lmp.cmd.unfix(4)

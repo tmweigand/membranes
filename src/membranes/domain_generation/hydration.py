@@ -4,9 +4,9 @@ Hydrates an equilibrated PA membrane by adding water to feed/permeate
 regions and running a pressurized filtration simulation.
 """
 
-from membranes.domain_generation.lammps_init import LAMMPSInitialize
-from membranes.domain_generation.style_properties import StyleProperties
-from membranes.domain_generation.system_properties import SystemProperties
+import os
+from membranes.domain_generation.initialize import initialize_simulation
+from membranes.utils import random_int
 
 
 class HydrationSimulation:
@@ -33,60 +33,47 @@ class HydrationSimulation:
     # Atom types
     WATER_TYPES = (15, 16)
     PISTON_TYPE = 17
+    WATER_BOND = 17
+    WATER_ANGLE = 22
+    WATER_ATOMS = (15, 16)
+    HYDROGEN_ATOMS_RV = (5, 8, 14)
 
     def __init__(
         self,
-        in_dir: str = "rv",
-        mult: float = 0.1,
-        rand: int = 1,
-        input_data: str = "logs/equil_polymer.lmps",
+        in_dir: str,
+        input_data: str,
+        multiple: float = 0.1,
+        temperature: float = 300,
         feed_pressure_atm: float = 0.5,
         perm_pressure_atm: float = 0.5,
         hydration_steps: int = 3_000_000,
         production_steps: int = 25_000_000,
+        seed: int | None = None,
     ):
         self.in_dir = in_dir
-        self.mult = mult
-        self.rand = rand
+        self.multiple = multiple
         self.input_data = input_data
+        self.temperature = temperature
         self.feed_pressure_atm = feed_pressure_atm
         self.perm_pressure_atm = perm_pressure_atm
         self.hydration_steps = hydration_steps
         self.production_steps = production_steps
+        self.seed = seed
 
-        self.mult1d = mult ** (1 / 3)
-        self.mult2d = mult ** (2 / 3)
+        self.mult1d = multiple ** (1 / 3)
+        self.mult2d = multiple ** (2 / 3)
         self.z_delta = 200 * self.mult1d
         self.num_h2o = int(3600 * self.mult2d)
 
-        self._init_lammps()
+        self.out_dir = f"data_out/{in_dir}/hydration"
+        os.makedirs(self.out_dir, exist_ok=True)
+        os.makedirs(f"{self.out_dir}/restarts", exist_ok=True)
+
+        self.wrapper = initialize_simulation(self.in_dir, log_file="logs/log.hydration")
+        self.lmp = self.wrapper.lmp
 
     def _data_path(self, filename: str) -> str:
         return f"data_in/{self.in_dir}/{filename}"
-
-    # ------------------------------------------------------------------
-    # Initialisation
-    # ------------------------------------------------------------------
-
-    def _init_lammps(self):
-        wrapper = LAMMPSInitialize(
-            log_file="logs/log.hydration", units="real", atom_style="full"
-        )
-        self.lmp = wrapper.lmp
-
-        if self.in_dir == "rv":
-            StyleProperties(
-                lmp=self.lmp,
-                dihedral_style="charmm",
-                improper_style="harmonic",
-                special_bonds="charmm",
-            )
-        else:
-            StyleProperties(lmp=self.lmp)
-
-        SystemProperties(
-            self.lmp, dimension=3, n_atom_types=30, boundary=("p", "p", "p")
-        )
 
     # ------------------------------------------------------------------
     # Helpers
@@ -105,11 +92,18 @@ class HydrationSimulation:
 
     def _minimize(self, pre_timestep: float = 10.0, post_timestep: float = 2.0):
         self.lmp.cmd.timestep(pre_timestep)
-        self.lmp.cmd.minimize(1.0e-8, 1.0e-8, 1000, 100000)
+        self.wrapper.minimize(
+            etol=1.0e-8,
+            ftol=1.0e-8,
+            maxiter=1000,
+            maxeval=100000,
+        )
         self.lmp.cmd.timestep(post_timestep)
 
-    def _nvt(self, nsteps: int, temp: float = 300, damping: float = 100):
-        self.lmp.cmd.fix(1, "all", "nvt", "temp", temp, temp, damping)
+    def _nvt(self, nsteps: int, temp: float):
+        self.wrapper.fix_nvt(
+            fix_id=1, group_id="all", temperature_start=temp, temperature_end=temp
+        )
         self.lmp.cmd.run(nsteps)
         self.lmp.cmd.unfix(1)
 
@@ -143,12 +137,12 @@ class HydrationSimulation:
             "displace_atoms all move -$(xlo) -$(ylo) -$(zlo) units box"
         )
 
-        self.lmp.cmd.velocity("all", "create", 300, 123 * self.rand)
+        self.lmp.cmd.velocity("all", "create", 300, random_int(self.seed))
 
         self._minimize(pre_timestep=10.0, post_timestep=2.0)
-        self._nvt(5000)
+        self._nvt(5000, self.temperature)
         self._minimize(pre_timestep=10.0, post_timestep=2.0)
-        self._nvt(5000)
+        self._nvt(5000, self.temperature)
 
     # ------------------------------------------------------------------
     # Stage 2 — unwrap membrane into a slab
@@ -156,20 +150,18 @@ class HydrationSimulation:
 
     def unwrap(self):
         """Cut the periodic membrane into a finite slab and extend the box in z."""
-        m1 = self.mult1d
-        z_delta = self.z_delta
-        b = self._box()
+        box = self._box()
 
         # Trim atoms outside the membrane slab
         self.lmp.cmd.region(
             "membranebox",
             "block",
-            b["xlo"],
-            b["xhi"],
-            b["ylo"],
-            b["yhi"],
-            b["zlo"],
-            b["zhi"] - 2.0 * m1,
+            box["xlo"],
+            box["xhi"],
+            box["ylo"],
+            box["yhi"],
+            box["zlo"],
+            box["zhi"] - 2.0 * self.mult1d,
             "side",
             "out",
             "units",
@@ -196,14 +188,14 @@ class HydrationSimulation:
             "f",
             "z",
             "delta",
-            -z_delta,
-            z_delta,
+            -self.z_delta,
+            self.z_delta,
             "units",
             "box",
         )
 
         # Re-read bounds after change_box
-        b = self._box()
+        box = self._box()
 
         # Temporary LJ walls to contain atoms during minimization of cut edges
         self.lmp.cmd.fix(
@@ -211,12 +203,12 @@ class HydrationSimulation:
             "all",
             "wall/lj126",
             "zlo",
-            b["zlo"] + z_delta - 9 * m1,
+            box["zlo"] + self.z_delta - 9 * self.mult1d,
             0.06844,
             3.40700,
             9,
             "zhi",
-            b["zhi"] - z_delta + 9 * m1,
+            box["zhi"] - self.z_delta + 9 * self.mult1d,
             0.06844,
             3.40700,
             9,
@@ -224,21 +216,21 @@ class HydrationSimulation:
         self.lmp.cmd.fix_modify("zwalls", "energy", "yes")
 
         self._minimize(pre_timestep=10.0, post_timestep=1.0)
-        self._nvt(100)
+        self._nvt(100, self.temperature)
         self._minimize(pre_timestep=10.0, post_timestep=2.0)
         self.lmp.cmd.unfix("zwalls")
 
         # Remove floating fragments outside the water compartment bounds
-        b = self._box()
+        box = self._box()
         self.lmp.cmd.region(
             "membranebox",
             "block",
-            b["xlo"],
-            b["xhi"],
-            b["ylo"],
-            b["yhi"],
-            b["zlo"] + z_delta,
-            b["zhi"] - z_delta,
+            box["xlo"],
+            box["xhi"],
+            box["ylo"],
+            box["yhi"],
+            box["zlo"] + self.z_delta,
+            box["zhi"] - self.z_delta,
             "side",
             "out",
             "units",
@@ -254,8 +246,6 @@ class HydrationSimulation:
 
     def add_water(self):
         """Place TIP3P water molecules in the feed and permeate compartments."""
-        m1 = self.mult1d
-        z_delta = self.z_delta
         b = self._box()
 
         self.lmp.cmd.region(
@@ -265,8 +255,8 @@ class HydrationSimulation:
             "INF",
             "INF",
             "INF",
-            b["zlo"] + 10 * m1,
-            b["zlo"] + z_delta - 10 * m1,
+            b["zlo"] + 10 * self.mult1d,
+            b["zlo"] + self.z_delta - 10 * self.mult1d,
             "units",
             "box",
         )
@@ -277,8 +267,8 @@ class HydrationSimulation:
             "INF",
             "INF",
             "INF",
-            b["zhi"] - z_delta + 10 * m1,
-            b["zhi"] - 10 * m1,
+            b["zhi"] - self.z_delta + 10 * self.mult1d,
+            b["zhi"] - 10 * self.mult1d,
             "units",
             "box",
         )
@@ -290,10 +280,10 @@ class HydrationSimulation:
             "FEED",
             "subset",
             self.num_h2o,
-            521 + self.rand,
+            random_int(self.seed),
             "mol",
             "mol1",
-            322 + self.rand,
+            random_int(self.seed),
         )
         self.lmp.cmd.create_atoms(
             0,
@@ -301,10 +291,10 @@ class HydrationSimulation:
             "PERM",
             "subset",
             self.num_h2o,
-            512 + self.rand,
+            random_int(self.seed),
             "mol",
             "mol1",
-            632 + self.rand,
+            random_int(self.seed),
         )
 
         self.lmp.cmd.group("FEEDWATER", "region", "FEED")
@@ -313,22 +303,21 @@ class HydrationSimulation:
 
         self._minimize(pre_timestep=10.0, post_timestep=2.0)
 
+        self.lmp.cmd.write_data(f"{self.out_dir}/water_added.lmps")
+
     # ------------------------------------------------------------------
     # Stage 4 — add pistons and backing layer
     # ------------------------------------------------------------------
 
     def add_pistons(self):
         """Add graphene-like piston planes and a polysulfone backing layer."""
-        m1 = self.mult1d
-        z_delta = self.z_delta
-        glc = self.GRAPHENE_LC
 
-        self.lmp.cmd.lattice("hcp", glc)
-        b = self._box()
+        self.lmp.cmd.lattice("hcp", self.GRAPHENE_LC)
+        box = self._box()
 
         # --- Backing layer (polysulfone pin) on the permeate side ---
-        pin_lo = b["zhi"] - z_delta + 5 * m1
-        pin_hi = pin_lo + glc
+        pin_lo = box["zhi"] - self.z_delta + 5 * self.mult1d
+        pin_hi = pin_lo + self.GRAPHENE_LC
         self.lmp.cmd.region(
             "PINlayer",
             "block",
@@ -354,8 +343,8 @@ class HydrationSimulation:
             "INF",
             "INF",
             "INF",
-            b["zlo"],
-            b["zlo"] + glc * 0.75,
+            box["zlo"],
+            box["zlo"] + self.GRAPHENE_LC * 0.75,
             "units",
             "box",
         )
@@ -370,8 +359,8 @@ class HydrationSimulation:
             "INF",
             "INF",
             "INF",
-            b["zhi"] - glc * 0.75,
-            b["zhi"],
+            box["zhi"] - self.GRAPHENE_LC * 0.75,
+            box["zhi"],
             "units",
             "box",
         )
@@ -383,20 +372,20 @@ class HydrationSimulation:
 
         # Expand box and add hard bounding LJ walls for the pistons
         self.lmp.cmd.change_box(
-            "all", "z", "delta", -200 * m1, 200 * m1, "units", "box"
+            "all", "z", "delta", -200 * self.mult1d, 200 * self.mult1d, "units", "box"
         )
-        b = self._box()
+        box = self._box()
         self.lmp.cmd.fix(
             "zwalls1",
             "all",
             "wall/lj126",
             "zlo",
-            b["zlo"],
+            box["zlo"],
             0.06844,
             3.40700,
             9,
             "zhi",
-            b["zhi"],
+            box["zhi"],
             0.06844,
             3.40700,
             9,
@@ -405,24 +394,52 @@ class HydrationSimulation:
 
         # --- Pressure forces on pistons ---
         # Compute piston area once — box xy dimensions are fixed from here on
-        b = self._box()
-        piston_area = (b["xhi"] - b["xlo"]) * (b["yhi"] - b["ylo"])
+        box = self._box()
+        piston_area = (box["xhi"] - box["xlo"]) * (box["yhi"] - box["ylo"])
 
-        a2m = self.ANG_TO_M
-        f2n = self.FINMD_TO_FINN
         feed_p = self.feed_pressure_atm * self.ATM_TO_PA
         perm_p = self.perm_pressure_atm * self.ATM_TO_PA
 
-        pos_force = piston_area * a2m**2 * feed_p / f2n
-        neg_force = -piston_area * a2m**2 * perm_p / f2n
+        pos_force = piston_area * self.ANG_TO_M**2 * feed_p / self.FINMD_TO_FINN
+        neg_force = -piston_area * self.ANG_TO_M**2 * perm_p / self.FINMD_TO_FINN
 
-        # Zero x/y forces and set z forces on each piston plane so they move
-        # only axially. Using setforce + addforce avoids fix/rigid, which
-        # conflicts with fix/shake when atom groups overlap across procs.
-        self.lmp.cmd.fix("FEEDFORCE", "LOzwall", "setforce", 0.0, 0.0, "NULL")
-        self.lmp.cmd.fix("PERMFORCE", "HIzwall", "setforce", 0.0, 0.0, "NULL")
-        self.lmp.cmd.fix("FEEDPRESS", "LOzwall", "aveforce", 0.0, 0.0, pos_force)
-        self.lmp.cmd.fix("PERMPRESS", "HIzwall", "aveforce", 0.0, 0.0, neg_force)
+        self.lmp.cmd.fix("FEEDFORCE", "LOzwall", "addforce", 0.0, 0.0, pos_force)
+        self.lmp.cmd.fix("PERMFORCE", "HIzwall", "addforce", 0.0, 0.0, neg_force)
+
+        self.lmp.cmd.fix(
+            "LOPISTON",
+            "LOzwall",
+            "rigid",
+            "single",
+            "torque",
+            "*",
+            "off",
+            "off",
+            "off",
+            "force",
+            "*",
+            "off",
+            "off",
+            "on",
+        )
+        self.lmp.cmd.fix(
+            "HIPISTON",
+            "HIzwall",
+            "rigid",
+            "single",
+            "torque",
+            "*",
+            "off",
+            "off",
+            "off",
+            "force",
+            "*",
+            "off",
+            "off",
+            "on",
+        )
+
+        self.lmp.cmd.write_data(f"{self.out_dir}/pistons_added.lmps")
 
     # ------------------------------------------------------------------
     # Stage 5 — run hydration experiment
@@ -435,49 +452,45 @@ class HydrationSimulation:
 
         self.lmp.cmd.reset_atoms("id")
         self.lmp.cmd.write_data("test.lmps")
-        self.lmp.cmd.restart(5000, "restarts_hydr/restart.*")
+        self.lmp.cmd.restart(5000, f"{self.out_dir}/restarts/hydration_restart.*")
 
         # Exclude piston self-interactions
         self.lmp.cmd.neigh_modify("exclude", "type", self.PISTON_TYPE, self.PISTON_TYPE)
 
         # SHAKE on WATER only — piston atoms (type 17) have no bonds
-        self.lmp.cmd.fix(
-            "FXSHAKE",
-            "WATER",
-            "shake",
-            0.0001,
-            20,
-            0,
-            "b",
-            17,
-            "a",
-            22,
-            "t",
-            5,
-            8,
-            14,
+        self.wrapper.fix_shake(
+            fix_id="FXSHAKE",
+            group_id="all",
+            tol=0.0001,
+            iterations=20,
+            n_stats=0,
+            bond_type=self.WATER_BOND,
+            angle_type=self.WATER_ANGLE,
+            atom_type=self.HYDROGEN_ATOMS_RV,
         )
 
         # NVT on mobile atoms only — pistons are driven by aveforce
-        self.lmp.cmd.fix(1, "mobile", "nvt", "temp", 300, 300, 200)
-        self.lmp.cmd.thermo(100)
+        self.wrapper.fix_nvt(
+            fix_id=1,
+            group_id="mobile",
+            temperature_start=self.temperature,
+            temperature_end=self.temperature,
+            temperature_damp=200,
+        )
+        self.lmp.cmd.thermo(1000)
         self.lmp.cmd.thermo_style(
             "custom", "step", "temp", "press", "etotal", "ke", "pe"
         )
 
-        # Ramp timestep from 0.5 → 1.0 → 2.0 fs.
-        # Water molecules placed near pistons can have large initial forces;
-        # a sudden 1 fs step causes H atoms to fly off (bond explosion) which
-        # is what SHAKE reports as "missing atoms".
-        self.lmp.cmd.timestep(0.5)
+        self.lmp.cmd.timestep(1.0)
 
         # Dump atom types at step 0 to help diagnose any future SHAKE errors
         self.lmp.cmd.dump(
             "debugdump",
             "all",
             "custom",
-            1,
-            "logs/pre_run_atoms.txt",
+            100,
+            f"{self.out_dir}/pre_run_atoms.txt",
             "id",
             "type",
             "mol",
@@ -485,23 +498,17 @@ class HydrationSimulation:
             "y",
             "z",
         )
-        self.lmp.cmd.run(0)
-        self.lmp.cmd.undump("debugdump")
 
-        self.lmp.cmd.run(200)
-        self.lmp.cmd.timestep(1.0)
-        self.lmp.cmd.run(500)
-
-        self.lmp.cmd.write_restart("restarts_hydr/hydr_pre.restart")
+        self.lmp.cmd.write_restart(f"{self.out_dir}/restarts/pre_hydration.restart")
         self.lmp.cmd.run(self.hydration_steps)
-        self.lmp.cmd.write_restart("restarts_hydr/hydr_init.restart")
+        self.lmp.cmd.write_restart(f"{self.out_dir}/restarts/initial_hydration.restart")
 
         self.lmp.cmd.timestep(2.0)
         self.lmp.cmd.run(self.production_steps)
 
         self.lmp.cmd.unfix(1)
         self.lmp.cmd.unfix("FXSHAKE")
-        self.lmp.cmd.write_data("hydrated_data.lmps")
+        self.lmp.cmd.write_data(f"{self.out_dir}/hydrated_data.lmps")
 
     def _setup_computes(self):
         """Register per-atom stress and Voronoi computes for water molecules."""
@@ -531,7 +538,7 @@ class HydrationSimulation:
             "WATER",
             "custom/gz",
             100000,
-            "logs/pressuredata.*.gz",
+            f"{self.out_dir}/pressuredata.*.gz",
             "id",
             "mol",
             "type",
@@ -553,7 +560,7 @@ class HydrationSimulation:
             "membrane",
             "custom/gz",
             100000,
-            "logs/membranedata.*.gz",
+            f"{self.out_dir}/membranedata.*.gz",
             "id",
             "mol",
             "type",
@@ -570,7 +577,7 @@ class HydrationSimulation:
             "all",
             "custom/gz",
             100000,
-            "logs/systemdata.*.gz",
+            f"{self.out_dir}/systemdata.*.gz",
             "id",
             "mol",
             "type",
@@ -581,14 +588,3 @@ class HydrationSimulation:
             "z",
         )
         self.lmp.cmd.dump_modify("systemdata", "sort", 1)
-
-    # ------------------------------------------------------------------
-    # Top-level runner
-    # ------------------------------------------------------------------
-
-    def run(self):
-        self.load()
-        self.unwrap()
-        self.add_water()
-        self.add_pistons()
-        self.run_hydration()

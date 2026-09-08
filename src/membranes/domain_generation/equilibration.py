@@ -3,10 +3,9 @@
 Equilibrates a polymerized PA membrane to experimental density.
 """
 
-import numpy as np
-from membranes.domain_generation.lammps_init import LAMMPSInitialize
-from membranes.domain_generation.style_properties import StyleProperties
-from membranes.domain_generation.system_properties import SystemProperties
+import os
+from membranes.domain_generation.initialize import initialize_simulation
+from membranes.utils import random_int
 
 # Pressure ramp schedule (atm)
 PRESSURE_RAMP = [
@@ -29,6 +28,10 @@ PRESSURE_RAMP = [
 
 # Atom types to remove before equilibration
 EXCESS_TYPES = (11, 13, 18)
+WATER_BOND = 17
+WATER_ANGLE = 22
+WATER_ATOMS = (15, 16)
+HYDROGEN_ATOMS_RV = (5, 8, 14)
 
 
 class EquilibrationSimulation:
@@ -42,45 +45,27 @@ class EquilibrationSimulation:
 
     def __init__(
         self,
-        in_dir: str = "rv",
-        input_data: str = "logs/term_final.lmps",
+        in_dir: str,
+        input_data: str,
         rho_target: float = 1.24,
         temperature: float = 300,
         nsteps: int = 50_000,
-        initial_seed: int = 58447419,
+        seed: int | None = None,
     ):
         self.in_dir = in_dir
         self.input_data = input_data
         self.rho_target = rho_target
         self.temperature = temperature
         self.nsteps = nsteps
-        self.initial_seed = initial_seed
+        self.seed = seed
 
-        self._init_lammps()
+        self.out_dir = f"data_out/{in_dir}/equilibration"
+        os.makedirs(self.out_dir, exist_ok=True)
 
-    # ------------------------------------------------------------------
-    # Initialisation
-    # ------------------------------------------------------------------
-
-    def _init_lammps(self):
-        wrapper = LAMMPSInitialize(
-            log_file="logs/log.EQ", units="real", atom_style="full"
+        self.wrapper = initialize_simulation(
+            self.in_dir, log_file="logs/log.equilibration"
         )
-        self.lmp = wrapper.lmp
-
-        if self.in_dir == "rv":
-            StyleProperties(
-                lmp=self.lmp,
-                dihedral_style="charmm",
-                improper_style="harmonic",
-                special_bonds="charmm",
-            )
-        else:
-            StyleProperties(lmp=self.lmp)
-
-        SystemProperties(
-            self.lmp, dimension=3, n_atom_types=30, boundary=("p", "p", "p")
-        )
+        self.lmp = self.wrapper.lmp
 
     # ------------------------------------------------------------------
     # Helpers
@@ -93,19 +78,31 @@ class EquilibrationSimulation:
     def _minimize(self):
         self.lmp.cmd.min_style("cg")
         self.lmp.cmd.min_modify("line", "quadratic")
-        self.lmp.cmd.minimize(1.0e-4, 1.0e-4, 10000, 100000)
-
-    def _apply_shake(self):
-        self.lmp.cmd.fix(
-            "FXSHAKE", "all", "shake", 0.0001, 10, 0, "b", 17, "a", 22, "t", 5, 8, 14
+        self.wrapper.minimize(
+            etol=1.0e-4,
+            ftol=1.0e-4,
+            maxiter=10000,
+            maxeval=100000,
         )
 
-    def _nvt(self, temp: int, nsteps: int, seed: int | None = None):
-        self.lmp.cmd.fix(1, "all", "nvt", "temp", temp, temp, 100)
-        if seed is not None:
-            self.lmp.cmd.velocity("all", "create", temp, seed)
-        else:
-            self.lmp.cmd.velocity("all", "scale", temp)
+    def _apply_shake(self):
+        self.wrapper.fix_shake(
+            fix_id="FXSHAKE",
+            group_id="all",
+            tol=0.0001,
+            iterations=10,
+            n_stats=0,
+            atom_type=HYDROGEN_ATOMS_RV,
+        )
+
+    def _nvt(self, temp: int, nsteps: int):
+        self.wrapper.fix_nvt(
+            fix_id=1,
+            group_id="all",
+            temperature_start=temp,
+            temperature_end=temp,
+        )
+        self.lmp.cmd.velocity("all", "create", temp, random_int(self.seed))
         self.lmp.cmd.run(nsteps)
         self.lmp.cmd.unfix(1)
 
@@ -113,18 +110,13 @@ class EquilibrationSimulation:
         self.lmp.cmd.unfix("FXSHAKE")
         self._minimize()
         self._apply_shake()
-        self.lmp.cmd.fix(
-            1,
-            "all",
-            "npt",
-            "temp",
-            self.temperature,
-            self.temperature,
-            100,
-            "iso",
-            p_start,
-            p_end,
-            100,
+        self.wrapper.fix_npt(
+            fix_id=1,
+            group_id="all",
+            temperature_start=self.temperature,
+            temperature_end=self.temperature,
+            pressure_start=p_start,
+            pressure_end=p_end,
         )
         self.lmp.cmd.velocity("all", "scale", self.temperature)
         self.lmp.cmd.run(nsteps)
@@ -135,7 +127,7 @@ class EquilibrationSimulation:
     # ------------------------------------------------------------------
 
     def load(self):
-        """Read structure, strip excess atoms, minimize, and apply SHAKE."""
+        """Read structure, strip excess atoms"""
         self.lmp.cmd.read_data(self.input_data)
 
         self.lmp.cmd.dielectric(1.0)
@@ -145,9 +137,6 @@ class EquilibrationSimulation:
         self.lmp.cmd.run_style("verlet")
         self.lmp.cmd.thermo(5000)
 
-        self._minimize()
-        self._apply_shake()
-
     def equilibrate(self):
         """Cycle NVT/NPT stages until experimental density is reached.
 
@@ -156,10 +145,11 @@ class EquilibrationSimulation:
         PRESSURE_RAMP[i+1].  When the schedule is exhausted the index wraps
         back to the start so the ramp repeats if needed.
         """
+        self._minimize()
+        self._apply_shake()
+
         pressure_idx = 0
         n_up, n_down, n_max = 1, 0, 0
-        first_run = True
-
         while True:
             p_start = PRESSURE_RAMP[pressure_idx]
             p_end = PRESSURE_RAMP[pressure_idx + 1]
@@ -172,11 +162,10 @@ class EquilibrationSimulation:
             print("==================================")
 
             # NVT at 1000 K
-            self._nvt(1000, self.nsteps, seed=self.initial_seed if first_run else None)
-            first_run = False
+            self._nvt(temp=1000, nsteps=self.nsteps)
 
             # NVT at T (2x steps, matching original script)
-            self._nvt(self.temperature, self.nsteps * 2)
+            self._nvt(temp=self.temperature, nsteps=self.nsteps * 2)
 
             # NPT at current pressure step
             self._npt(p_start, p_end, self.nsteps)
@@ -193,23 +182,18 @@ class EquilibrationSimulation:
 
             # Once dense enough at meaningful pressure, test stability at 1 bar
             if rho >= self.rho_target and p_start > 2000:
-                self.lmp.cmd.fix(
-                    1,
-                    "all",
-                    "npt",
-                    "temp",
-                    self.temperature,
-                    self.temperature,
-                    100,
-                    "iso",
-                    1,
-                    1,
-                    100,
+                self.wrapper.fix_npt(
+                    fix_id=1,
+                    group_id="all",
+                    temperature_start=self.temperature,
+                    temperature_end=self.temperature,
+                    pressure_start=1,
+                    pressure_end=1,
                 )
+
                 self.lmp.cmd.velocity("all", "scale", self.temperature)
                 self.lmp.cmd.run(5000)
                 self.lmp.cmd.unfix(1)
-                self.lmp.cmd.write_data("init_equil_polym.lmps")
 
                 rho = self._density()
                 if rho >= self.rho_target:
@@ -219,27 +203,17 @@ class EquilibrationSimulation:
     def finalize(self):
         """Long 1-bar NPT run and write final structure."""
         print("FINAL EQUILIBRATION RUN")
-        self.lmp.cmd.fix(
-            1,
-            "all",
-            "npt",
-            "temp",
-            self.temperature,
-            self.temperature,
-            100,
-            "iso",
-            1,
-            1,
-            100,
+        self.wrapper.fix_npt(
+            fix_id=1,
+            group_id="all",
+            temperature_start=self.temperature,
+            temperature_end=self.temperature,
+            pressure_start=1,
+            pressure_end=1,
         )
         self.lmp.cmd.velocity("all", "scale", self.temperature)
         self.lmp.cmd.run(self.nsteps)
         self.lmp.cmd.unfix(1)
         rho = self._density()
         print(f"Final density = {rho:.4f} g/cm³")
-        self.lmp.cmd.write_data("logs/equil_polymer.lmps")
-
-    def run(self):
-        self.load()
-        self.equilibrate()
-        self.finalize()
+        self.lmp.cmd.write_data(f"{self.out_dir}/equilibrated_polymer.lmps")

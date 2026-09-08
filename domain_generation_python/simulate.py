@@ -21,17 +21,19 @@ from membranes.domain_generation.hydration import HydrationSimulation
 # Universal parameters (shared across all stages)
 # ──────────────────────────────────────────────────────────────────────
 
-UNIVERSAL_PARAMS = dict(
-    in_dir="rv",  # Force field / input directory key ("rv" or other)
-    multiple=0.1,  # System size scaling factor
-)
+in_dir = "rv"  # Force field / input directory key ("rv" or other)
+multiple = 0.1  # System size scaling factor
+seed = 143
+
 
 # ──────────────────────────────────────────────────────────────────────
 # Stage-specific parameters
 # ──────────────────────────────────────────────────────────────────────
 
 POLYMERIZE_PARAMS = dict(
-    **UNIVERSAL_PARAMS,
+    in_dir=in_dir,
+    multiple=multiple,
+    seed=seed,
     xlink=0.80,  # Target cross-linking degree (0–1)
     temperature=300,  # Simulation temperature (K)
     bond_frequency=50,  # Steps between bond/react attempts
@@ -41,21 +43,21 @@ POLYMERIZE_PARAMS = dict(
 )
 
 EQUILIBRATE_PARAMS = dict(
-    **UNIVERSAL_PARAMS,
-    input_data="logs/term_final.lmps",  # Output from polymerization
+    in_dir=in_dir,
+    seed=seed,
+    input_data=f"data_out/{in_dir}/polymerization/polymerization_final.lmps",  # Output from polymerization
     rho_target=1.24,  # Experimental PA density (g/cm³)
     nsteps=500,  # Base MD steps per stage
-    initial_seed=58447419,  # Velocity seed for first NVT run
 )
 
 HYDRATE_PARAMS = dict(
-    **UNIVERSAL_PARAMS,
-    mult=0.1,  # System size scaling factor (used by HydrationSimulation)
-    rand=1,  # Random seed multiplier
-    input_data="logs/equil_polymer.lmps",  # Output from equilibration
-    feed_pressure_atm=0.5,  # Feed-side applied pressure (atm)
-    perm_pressure_atm=0.5,  # Permeate-side applied pressure (atm)
-    hydration_steps=3000,  # Steps for initial hydration run
+    in_dir=in_dir,
+    multiple=multiple,
+    seed=seed,
+    input_data=f"data_out/{in_dir}/equilibration/equilibrated_polymer.lmps",  # Output from equilibration
+    feed_pressure_atm=20,  # Feed-side applied pressure (atm)
+    perm_pressure_atm=20,  # Permeate-side applied pressure (atm)
+    hydration_steps=30000,  # Steps for initial hydration run
     production_steps=5000,  # Steps for production run
 )
 
@@ -71,7 +73,7 @@ def run_polymerize():
     sim.pack_molecules()
 
     print("\n=== Stage 2: Minimization ===")
-    sim.minimize()
+    sim.minimize_packing()
 
     print("\n=== Stage 3: PA polymerization ===")
     max_bonds = sim.polymerize_pa()
@@ -131,7 +133,7 @@ def run_hydrate():
 STAGES = {
     "polymerize": run_polymerize,
     "equilibrate": run_equilibrate,
-    "hydrate": run_hydrate,
+    "hydration": run_hydrate,
 }
 
 if __name__ == "__main__":
