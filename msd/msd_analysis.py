@@ -19,7 +19,7 @@ def main():
     msd_values = []
     times = []
 
-    water_files = water_files * 10
+    water_files = water_files
 
     initial_time = True
     for file in water_files:
