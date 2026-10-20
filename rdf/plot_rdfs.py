@@ -159,6 +159,8 @@ def generate_free_energy_plot(rdf, folder, x_line=None, y_line=None):
 
     bin_name = rdf.name.replace("_", "-")
 
+    print(bin_name, np.max(rdf.radii))
+
     plt.figure(figsize=(8, 5))
     plt.plot(
         rdf.radii,
@@ -239,11 +241,11 @@ def generate_plots():
 
         interaction_count += np.sum(binned_distances)
 
-        print(atom_label, np.sum(binned_distances), interaction_count)
-
         bin = pmmoto.analysis.bins.Bin(
             bins[0], bins[-1], len(bins), atom_type, binned_distances
         )
+
+        print(atom_label, bin_file, bins[-1], bin.end, interaction_count)
 
         # Convert to rdf
         _rdf = bin.generate_rdf()
@@ -272,12 +274,12 @@ def generate_plots():
         equil_radius = radii[element_number[0]] + 1.4
 
         # generate_bin_plot(bin, "data_out/bin_count_plots/")
-        generate_rdf_plot(rdf, "data_out/rdf_plots/", equil_radius)
-        # generate_free_energy_plot(
-        #     bounded_rdf,
-        #     "data_out/bounded_free_energy_plots/",
-        #     equil_radius,
-        # )
+        # generate_rdf_plot(rdf, "data_out/rdf_plots/", equil_radius)
+        generate_free_energy_plot(
+            bounded_rdf,
+            "data_out/bounded_free_energy_plots/",
+            equil_radius,
+        )
         # generate_bin_and_rdf_plot(bin, rdf, "data_out/bin_count_and_rdf_plots/")
 
 
