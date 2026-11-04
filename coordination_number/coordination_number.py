@@ -21,64 +21,16 @@ import glob
 import re
 from collections import Counter
 
+import argparse
+import importlib
+
 import numpy as np
 import pmmoto
 from membranes.helpers import helpers
 import MDAnalysis as mda
 from MDAnalysis.lib.distances import self_capped_distance
 
-# Confirm the input files/parameters and output location
-
-# Choose "trajectory" or "frame_files" for one multi-frame LAMMPS dump or for a directory containing one frame per file respectively.
-input_mode = "trajectory"
-
-# Mode 1: all frames in a lammpstrj file (Uses MDAnalysis reader)
-trajectory_file = (
-    "/hickory/users/r/g/rghanta/water_data/tip3p_orig/100bar/traj_100bar.lammpstrj"
-)
-
-# Mode 2: individual frame files(Uses membrane.helper functions for PMMoTo reading)
-# Set use_helpers_get_files=False to use a custom glob pattern instead.
-use_helpers_get_files = True
-machine = "mac"
-file_type = "gzip"
-frame_files_pattern = (
-    "/path/to/frame_files/*"  # only used when use_helpers_get_files is False.
-)
-
-# Atom TYPE identifying water oxygen (not atom ID or molecule ID). '1' for pure water simulations & '15' for membrane simulations.
-oxygen_type = 1
-
-# Coordination cutoffs: 0.30 to 0.80 nm in 0.02 nm increments.
-cutoffs_nm = np.arange(30, 81, 2, dtype=np.int64) / 100.0
-
-# Region definitions are based on oxygen z coordinates in Angstrom.
-# Water-only system: use region_bounds = {"whole_box": (-np.inf, np.inf)}
-# Membrane system example: # region_bounds = {"feed": (-np.inf, -100.0),"membrane": (-100.0, 100.0),"permeate": (100.0, np.inf),}
-
-region_bounds = {
-    "whole_box": (-np.inf, np.inf),
-}
-
-# Box dimensions needed for "frame_files" input_mode in Angstrom.
-# Set to the actual box for this system. Format:[Lx, Ly, Lz, alpha, beta, gamma]
-# Below is an example format for a membrane system.
-frame_files_box = np.array(
-    [175.76827931, 175.76827931, 524.0, 90.0, 90.0, 90.0],
-    dtype=np.float64,
-)
-
-# Parameters passed to the PMMoTo frame reader.
-# Iteration number of the first frame in the trajectory (used to calculate the timestep).
-# Simulation timestep in nanoseconds (used to calculate the timestep).
-# If you want to use the unwrapped coordinates for analysis, set unwrapped_coordinates=True.
-initial_iteration = 71045000
-simulation_timestep = 2e-6
-unwrapped_coordinates = False
-
-# Output folder
-output_dir = "water_MD/Analysis/coordination_number/tip3p_orig/100bar/"
-
+config = None
 
 # Functions for processing frames and calculating coordination numbers
 
@@ -89,8 +41,8 @@ def safe_label(text):
 
 def get_frame_files(pattern=None):
     """Get frame files using the original helper by default, or a custom glob."""
-    if use_helpers_get_files:
-        files = helpers.get_files(machine=machine, file_type=file_type)
+    if config.use_helpers_get_files:
+        files = helpers.get_files(machine=config.machine, file_type=config.file_type)
     else:
         if not pattern:
             raise ValueError(
@@ -109,8 +61,8 @@ def get_frame_files(pattern=None):
     files = sorted(files, key=sort_key)
     if not files:
         source = (
-            f"helpers.get_files(machine={machine!r}, file_type={file_type!r})"
-            if use_helpers_get_files
+            f"helpers.get_files(machine={config.machine!r}, file_type={config.file_type!r})"
+            if config.use_helpers_get_files
             else f"glob pattern {pattern!r}"
         )
         raise FileNotFoundError(f"No frame files found using {source}.")
@@ -149,12 +101,12 @@ def classify_regions(z_values, bounds):
             )
         labels[mask] = region
 
-    if np.any(labels == ""):
-        examples = z_values[labels == ""][:5]
-        raise ValueError(
-            "Some oxygen atoms do not fall into any region. "
-            f"Example z coordinates: {examples}. Check region_bounds."
-        )
+    # if np.any(labels == ""):
+    #    examples = z_values[labels == ""][:5]
+    #    raise ValueError(
+    #        "Some oxygen atoms do not fall into any region. "
+    #        f"Example z coordinates: {examples}. Check region_bounds."
+    #    )
     return labels
 
 
@@ -190,43 +142,76 @@ def update_stats(stats, values):
 
 
 def write_readme(input_description, frame_count, oxygen_type_value, region_config):
-    path = os.path.join(output_dir, "README.txt")
+    path = os.path.join(config.output_dir, "README.txt")
     with open(path, "w", encoding="utf-8") as f:
         f.write("Water oxygen coordination analysis\n")
         f.write("==================================\n\n")
-        f.write(f"Input mode: {input_mode}\n")
+        f.write(f"Input mode: {config.input_mode}\n")
         f.write(f"Input data: {input_description}\n")
         f.write(f"Frames processed: {frame_count}\n")
         f.write(f"Oxygen atom TYPE: {oxygen_type_value}\n")
         f.write("Coordinate and box-length units: Angstrom\n")
         f.write("Cutoff units: nm (converted to Angstrom for distance calculations)\n")
-        f.write(f"Cutoffs (nm): {', '.join(f'{x:.2f}' for x in cutoffs_nm)}\n\n")
+        f.write(f"Cutoffs (nm): {', '.join(f'{x:.2f}' for x in config.cutoffs_nm)}\n\n")
         f.write("Region definitions (z_min, z_max), Angstrom:\n")
         for region, limits in region_config.items():
             f.write(f"  {region}: {limits}\n")
 
-        f.write(f"\nAll outputs are stored in: {os.path.abspath(output_dir)}\n")
+        f.write(f"\nAll outputs are stored in: {os.path.abspath(config.output_dir)}\n")
+
+
+def parse_arguments():
+
+    parser = argparse.ArgumentParser(
+        description="Calculate water oxygen coordination numbers."
+    )
+
+    parser.add_argument(
+        "--simtype",
+        type=str,
+        required=True,
+        choices=["watersim", "membranesim"],
+        help="Choose simulation type: watersim or membranesim",
+    )
+
+    return parser.parse_args()
+
+
+def load_simulation_config(simtype):
+
+    config = importlib.import_module(f"helperfiles.{simtype}")
+
+    return config
 
 
 # MAIN
 
 
 def main():
-    os.makedirs(output_dir, exist_ok=True)
+    global config
 
-    if input_mode not in {"trajectory", "frame_files"}:
+    args = parse_arguments()
+
+    config = load_simulation_config(args.simtype)
+
+    print(f"\nSimulation type: {args.simtype}")
+    print(f"Configuration: {config.__name__}")
+
+    os.makedirs(config.output_dir, exist_ok=True)
+
+    if config.input_mode not in {"trajectory", "frame_files"}:
         raise ValueError("input_mode must be 'trajectory' or 'frame_files'.")
 
-    if not region_bounds:
+    if not config.region_bounds:
         raise ValueError("region_bounds must contain at least one region.")
 
     # Each cutoff has aggregate stats and a CN histogram for each region.
     stats = {
         float(cutoff): {
             region: {"sum": 0, "sum_sq": 0.0, "count": 0, "frequency": Counter()}
-            for region in region_bounds
+            for region in config.region_bounds
         }
-        for cutoff in cutoffs_nm
+        for cutoff in config.cutoffs_nm
     }
 
     frame_count = 0
@@ -240,26 +225,26 @@ def main():
         positions = np.asarray(positions, dtype=np.float64)
         types = np.asarray(types)
 
-        oxygen_mask = types.astype(int) == int(oxygen_type)
+        oxygen_mask = types.astype(int) == int(config.oxygen_type)
         oxygen_ids = atom_ids[oxygen_mask]
         oxygen_pos = positions[oxygen_mask]
 
         if oxygen_pos.size == 0:
             raise ValueError(
                 f"No oxygen atoms found in frame {frame_index}. "
-                f"Check oxygen_type={oxygen_type}."
+                f"Check oxygen_type={config.oxygen_type}."
             )
         if len(np.unique(oxygen_ids)) != len(oxygen_ids):
             raise ValueError(f"Duplicate oxygen atom IDs in frame {frame_index}.")
 
         box = validate_box(box, f"frame {frame_index}")
-        regions = classify_regions(oxygen_pos[:, 2], region_bounds)
+        regions = classify_regions(oxygen_pos[:, 2], config.region_bounds)
 
         # Find pairs once at the largest cutoff. Using wrapped coordinates.
         # Minimum-image distances are applied by the box.
         pairs, distances = self_capped_distance(
             oxygen_pos,
-            max_cutoff=float(cutoffs_nm[-1]) * 10.0,
+            max_cutoff=float(config.cutoffs_nm[-1]) * 10.0,
             box=box,
             return_distances=True,
         )
@@ -269,17 +254,19 @@ def main():
             f"oxygen atoms {len(oxygen_pos)} | pairs at 0.80 nm {len(pairs)}"
         )
 
-        for cutoff_nm in cutoffs_nm:
+        for cutoff_nm in config.cutoffs_nm:
             cn = coordination_numbers(pairs, distances, cutoff_nm, len(oxygen_pos))
-            for region in region_bounds:
+            for region in config.region_bounds:
                 update_stats(stats[float(cutoff_nm)][region], cn[regions == region])
 
-    if input_mode == "trajectory":
-        if not os.path.isfile(trajectory_file):
-            raise FileNotFoundError(f"Trajectory file not found: {trajectory_file}")
+    if config.input_mode == "trajectory":
+        if not os.path.isfile(config.trajectory_file):
+            raise FileNotFoundError(
+                f"Trajectory file not found: {config.trajectory_file}"
+            )
 
-        input_description = os.path.abspath(trajectory_file)
-        universe = mda.Universe(trajectory_file, format="LAMMPSDUMP")
+        input_description = os.path.abspath(config.trajectory_file)
+        universe = mda.Universe(config.trajectory_file, format="LAMMPSDUMP")
         print("Trajectory loaded.")
         print("Number of atoms:", len(universe.atoms))
         print("Number of frames:", len(universe.trajectory))
@@ -289,9 +276,9 @@ def main():
         )
 
         all_types = np.asarray(universe.atoms.types, dtype=int)
-        if not np.any(all_types == int(oxygen_type)):
+        if not np.any(all_types == int(config.oxygen_type)):
             raise ValueError(
-                f"No atoms with type {oxygen_type} found. "
+                f"No atoms with type {config.oxygen_type} found. "
                 f"Available types: {np.unique(all_types)}"
             )
 
@@ -307,13 +294,11 @@ def main():
             )
 
     else:
-        frame_files = get_frame_files(frame_files_pattern)
-        if use_helpers_get_files:
-            input_source = (
-                f"helpers.get_files(machine={machine!r}, file_type={file_type!r})"
-            )
+        frame_files = get_frame_files(config.frame_files_pattern)
+        if config.use_helpers_get_files:
+            input_source = f"helpers.get_files(machine={config.machine!r}, file_type={config.file_type!r})"
         else:
-            input_source = f"Glob pattern: {frame_files_pattern}"
+            input_source = f"Glob pattern: {config.frame_files_pattern}"
         input_description = (
             f"{input_source}\n"
             f"First file: {os.path.abspath(frame_files[0])}\n"
@@ -325,9 +310,9 @@ def main():
             atom_ids, positions, types, masses, domain, timestep = (
                 pmmoto.io.data_read.read_lammps_atoms(
                     path,
-                    unwrapped_coordinates=unwrapped_coordinates,
-                    initial_iteration=initial_iteration,
-                    simulation_timestep=simulation_timestep,
+                    unwrapped_coordinates=config.unwrapped_coordinates,
+                    initial_iteration=config.initial_iteration,
+                    simulation_timestep=config.simulation_timestep,
                 )
             )
             process_frame(
@@ -336,17 +321,17 @@ def main():
                 atom_ids,
                 positions,
                 types,
-                frame_files_box,
+                config.frame_files_box,
             )
 
     # Summary statistics and output files
-    summary_path = os.path.join(output_dir, "coordination_summary.dat")
+    summary_path = os.path.join(config.output_dir, "coordination_summary.dat")
     with open(summary_path, "w", encoding="utf-8") as f:
         f.write(
             "# cutoff_nm mean_coordination_number " "std_coordination_number region\n"
         )
-        for cutoff_nm in cutoffs_nm:
-            for region in region_bounds:
+        for cutoff_nm in config.cutoffs_nm:
+            for region in config.region_bounds:
                 item = stats[float(cutoff_nm)][region]
                 count = item["count"]
                 if count:
@@ -367,13 +352,13 @@ def main():
                 )
 
     # Single file outputs for each cutoff and region: coordination number, frequency, probability
-    for cutoff_nm in cutoffs_nm:
+    for cutoff_nm in config.cutoffs_nm:
         cutoff_label = f"{cutoff_nm:.2f}nm"
-        for region in region_bounds:
+        for region in config.region_bounds:
             frequency = stats[float(cutoff_nm)][region]["frequency"]
             region_label = safe_label(region)
             distribution_path = os.path.join(
-                output_dir,
+                config.output_dir,
                 f"coordination_distribution_{cutoff_label}_{region_label}.dat",
             )
             total = sum(frequency.values())
@@ -384,13 +369,15 @@ def main():
                     probability = count / total if total else np.nan
                     f.write(f"{cn_value:d} {count:d} {probability:.12g}\n")
 
-    write_readme(input_description, frame_count, oxygen_type, region_bounds)
+    write_readme(
+        input_description, frame_count, config.oxygen_type, config.region_bounds
+    )
 
     print("\nCoordination analysis completed.")
     print("Frames processed:", frame_count)
     print("Summary:", os.path.abspath(summary_path))
-    print("README:", os.path.abspath(os.path.join(output_dir, "README.txt")))
-    print("All output files:", os.path.abspath(output_dir))
+    print("README:", os.path.abspath(os.path.join(config.output_dir, "README.txt")))
+    print("All output files:", os.path.abspath(config.output_dir))
 
 
 if __name__ == "__main__":
