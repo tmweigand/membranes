@@ -26,88 +26,12 @@ import importlib
 
 import numpy as np
 import pmmoto
-from membranes.helpers import helpers
 import MDAnalysis as mda
 from MDAnalysis.lib.distances import self_capped_distance
 
-config = None
-
-# Functions for processing frames and calculating coordination numbers
-
-
-def safe_label(text):
-    return re.sub(r"[^A-Za-z0-9_.-]+", "_", str(text)).strip("_")
-
-
-def get_frame_files(pattern=None):
-    """Get frame files using the original helper by default, or a custom glob."""
-    if config.use_helpers_get_files:
-        files = helpers.get_files(machine=config.machine, file_type=config.file_type)
-    else:
-        if not pattern:
-            raise ValueError(
-                "Set frame_files_pattern when use_helpers_get_files=False."
-            )
-        files = [path for path in glob.glob(pattern) if os.path.isfile(path)]
-
-    # Sort numerically by the final number in the filename (e.g. timestep).
-    def sort_key(path):
-        name = os.path.basename(path)
-        numbers = re.findall(r"\d+", name)
-        if numbers:
-            return (0, int(numbers[-1]), name)
-        return (1, 0, name)
-
-    files = sorted(files, key=sort_key)
-    if not files:
-        source = (
-            f"helpers.get_files(machine={config.machine!r}, file_type={config.file_type!r})"
-            if config.use_helpers_get_files
-            else f"glob pattern {pattern!r}"
-        )
-        raise FileNotFoundError(f"No frame files found using {source}.")
-    return files
-
-
-def classify_regions(z_values, bounds):
-    labels = np.full(len(z_values), "", dtype=object)
-
-    if len(bounds) == 1:
-        only_region = next(iter(bounds))
-        low, high = bounds[only_region]
-        if np.isneginf(low) and np.isposinf(high):
-            return np.full(len(z_values), only_region, dtype=object)
-
-    for region, (low, high) in bounds.items():
-        if region == "membrane" and "feed" in bounds and "permeate" in bounds:
-            mask = (z_values >= low) & (z_values <= high)
-        elif region == "feed" and "membrane" in bounds:
-            mask = z_values < high
-        elif region == "permeate" and "membrane" in bounds:
-            mask = z_values > low
-        else:
-            if np.isneginf(low):
-                mask = z_values <= high
-            elif np.isposinf(high):
-                mask = z_values > low
-            else:
-                mask = (z_values > low) & (z_values <= high)
-
-        # If any overlaps occur, raise an error. This ensures that each oxygen atom is assigned to exactly one region.
-        overlap = mask & (labels != "")
-        if np.any(overlap):
-            raise ValueError(
-                f"Region definitions overlap for {region!r}; check region_bounds."
-            )
-        labels[mask] = region
-
-    # if np.any(labels == ""):
-    #    examples = z_values[labels == ""][:5]
-    #    raise ValueError(
-    #        "Some oxygen atoms do not fall into any region. "
-    #        f"Example z coordinates: {examples}. Check region_bounds."
-    #    )
-    return labels
+from helpers.box import validate_box
+from helpers.frame_files import get_frame_files, safe_label
+from helpers.regions import classify_regions
 
 
 def coordination_numbers(pair_indices, pair_distances, cutoff_nm, oxygen_count):
@@ -122,15 +46,6 @@ def coordination_numbers(pair_indices, pair_distances, cutoff_nm, oxygen_count):
     return coordination
 
 
-def validate_box(box, frame_label):
-    box = np.asarray(box, dtype=np.float64)
-    if box.size < 6 or not np.all(np.isfinite(box[:6])):
-        raise ValueError(f"Invalid box dimensions in {frame_label}: {box}")
-    if np.any(box[:3] <= 0):
-        raise ValueError(f"Invalid box lengths in {frame_label}: {box[:3]}")
-    return box[:6]
-
-
 def update_stats(stats, values):
     values = np.asarray(values, dtype=np.int64)
     if values.size == 0:
@@ -141,23 +56,31 @@ def update_stats(stats, values):
     stats["frequency"].update(values.tolist())
 
 
-def write_readme(input_description, frame_count, oxygen_type_value, region_config):
-    path = os.path.join(config.output_dir, "README.txt")
+def write_readme(
+    input_description,
+    frame_count,
+    oxygen_type_value,
+    region_config,
+    input_mode,
+    cutoffs_nm,
+    output_dir,
+):
+    path = os.path.join(output_dir, "README.txt")
     with open(path, "w", encoding="utf-8") as f:
         f.write("Water oxygen coordination analysis\n")
         f.write("==================================\n\n")
-        f.write(f"Input mode: {config.input_mode}\n")
+        f.write(f"Input mode: {input_mode}\n")
         f.write(f"Input data: {input_description}\n")
         f.write(f"Frames processed: {frame_count}\n")
         f.write(f"Oxygen atom TYPE: {oxygen_type_value}\n")
         f.write("Coordinate and box-length units: Angstrom\n")
         f.write("Cutoff units: nm (converted to Angstrom for distance calculations)\n")
-        f.write(f"Cutoffs (nm): {', '.join(f'{x:.2f}' for x in config.cutoffs_nm)}\n\n")
+        f.write(f"Cutoffs (nm): {', '.join(f'{x:.2f}' for x in cutoffs_nm)}\n\n")
         f.write("Region definitions (z_min, z_max), Angstrom:\n")
         for region, limits in region_config.items():
             f.write(f"  {region}: {limits}\n")
 
-        f.write(f"\nAll outputs are stored in: {os.path.abspath(config.output_dir)}\n")
+        f.write(f"\nAll outputs are stored in: {os.path.abspath(output_dir)}\n")
 
 
 def parse_arguments():
@@ -177,22 +100,14 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def load_simulation_config(simtype):
-
-    config = importlib.import_module(f"helperfiles.{simtype}")
-
-    return config
-
-
 # MAIN
 
 
 def main():
-    global config
 
     args = parse_arguments()
 
-    config = load_simulation_config(args.simtype)
+    config = importlib.import_module(f"input_type.{args.simtype}")
 
     print(f"\nSimulation type: {args.simtype}")
     print(f"Configuration: {config.__name__}")
@@ -294,7 +209,12 @@ def main():
             )
 
     else:
-        frame_files = get_frame_files(config.frame_files_pattern)
+        frame_files = get_frame_files(
+            pattern=config.frame_files_pattern,
+            use_helpers_get_files=config.use_helpers_get_files,
+            machine=config.machine,
+            file_type=config.file_type,
+        )
         if config.use_helpers_get_files:
             input_source = f"helpers.get_files(machine={config.machine!r}, file_type={config.file_type!r})"
         else:
@@ -370,7 +290,13 @@ def main():
                     f.write(f"{cn_value:d} {count:d} {probability:.12g}\n")
 
     write_readme(
-        input_description, frame_count, config.oxygen_type, config.region_bounds
+        input_description,
+        frame_count,
+        config.oxygen_type,
+        config.region_bounds,
+        config.input_mode,
+        config.cutoffs_nm,
+        config.output_dir,
     )
 
     print("\nCoordination analysis completed.")
