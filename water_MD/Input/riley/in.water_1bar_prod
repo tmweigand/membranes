@@ -1,0 +1,42 @@
+# 1 bar water production simulation
+# 1 ns at 1 fs timestep = 1,000,000 steps
+
+read_restart /hickory/users/r/g/rghanta/water_data/riley/1bar/water_1bar_extended.restart
+
+# Long-range electrostatics
+kspace_style     pppm 1.0e-4
+kspace_modify    diff ad
+
+thermo          1000
+thermo_style    custom step temp press density pe ke etotal vol
+
+# Record averaged thermodynamic properties
+variable        T equal temp
+variable        P equal press
+variable        Rho equal density
+variable        V equal vol
+
+fix             hist all ave/time 100 10 1000 v_T v_P v_Rho v_V file /hickory/users/r/g/rghanta/water_data/riley/1bar/thermo_1bar_prod.dat
+
+# NPT production at 300 K and 1 bar
+# LAMMPS units real uses atm for pressure
+fix             prod all npt temp 300.0 300.0 100.0 iso 0.986923 0.986923 1000.0
+
+# Save coordinates and molecule IDs every 1 ps
+dump            traj all custom 1000 /hickory/users/r/g/rghanta/water_data/riley/1bar/traj_1bar.lammpstrj id mol type x y z xu yu zu ix iy iz
+dump_modify     traj sort id
+
+# Periodic recovery checkpoints
+restart         100000 /hickory/users/r/g/rghanta/water_data/riley/1bar/water_1bar_prod.restart
+
+# 1 ns production
+run             1000000
+
+unfix           prod
+unfix           hist
+undump          traj
+
+write_data      /hickory/users/r/g/rghanta/water_data/riley/1bar/water_1bar_prod.data
+write_restart   /hickory/users/r/g/rghanta/water_data/riley/1bar/water_1bar_prod_final.restart
+~                                                                                                                                                             
+~                                                                               
