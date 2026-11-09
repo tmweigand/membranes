@@ -1,0 +1,51 @@
+
+# Water-only simulation at 300 K and 1 bar
+
+units            real
+atom_style       full
+dimension        3
+boundary         p p p
+newton           off
+
+read_data        Input/riley/water.data
+
+pair_style       lj/charmm/coul/long 7.0 9.0
+pair_modify      mix sixthpower
+kspace_style     pppm 1.0e-4
+kspace_modify    diff ad
+
+bond_style       harmonic
+angle_style      harmonic
+dihedral_style   charmm
+improper_style   harmonic
+special_bonds    charmm
+
+dielectric       1.0
+neighbor         4.0 bin
+neigh_modify     delay 0 every 1 check yes
+
+mass             1 16.000000
+mass             2 1.008000
+
+pair_coeff       1 1 0.155865 3.178
+pair_coeff       2 2 0.0 0.0
+bond_coeff       1 450.0 1.0118
+angle_coeff      1 55.0 108.15
+
+timestep         1.0
+thermo           1000
+thermo_style     custom step temp press density pe ke etotal vol
+
+min_style        cg
+minimize         1.0e-6 1.0e-8 1000 10000
+
+velocity         all create 300.0 4928459 mom yes rot yes dist gaussian
+
+fix              equil all npt temp 300.0 300.0 100.0 iso 0.986923 0.986923 1000.0
+
+run              50000
+
+unfix            equil
+write_data       /hickory/users/r/g/rghanta/water_data/riley/1bar/water_1bar_equilibrated.data
+write_restart    /hickory/users/r/g/rghanta/water_data/riley/1bar/water_1bar.restart
+
