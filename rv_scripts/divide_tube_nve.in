@@ -1,0 +1,141 @@
+# General 
+units            real
+atom_style       full
+dimension        3
+newton           off
+boundary         p p p
+
+
+# Styles
+pair_style       lj/charmm/coul/long 10.0 12.0
+pair_modify      shift no mix arithmetic
+kspace_style     pppm 1.0e-4
+kspace_modify    diff ad
+bond_style       harmonic
+angle_style      harmonic
+dihedral_style   charmm
+improper_style   harmonic
+special_bonds    charmm
+
+# System definition
+read_restart hydr/restarts/restart.480000
+
+dielectric 1.0
+neighbor 4.0 bin
+neigh_modify delay 0 every 1 check yes one 4000
+timestep 2.0
+run_style verlet
+
+# Set Graphene lattice constant variable for use as pistons and backing layer
+variable GRAPHENE_LATTICE_CONST equal 3.567184
+
+# Set lattice constant for use in packing waters into feed/permeate
+lattice fcc 3.9
+variable FinMD_to_FinN equal 6.94768717535204e-11
+variable ANG_to_M equal 1e-10
+variable ATM_to_nm2 equal 101325
+variable PISTON_AREA equal  (xhi-xlo)*(yhi-ylo)
+group WATER type 15 16
+group tube type 17
+
+
+region low_wall block INF INF INF INF $(zlo+0.5) $(zlo+10.5) units box
+region high_wall block INF INF INF INF  $(zhi-10.5) $(zhi-0.5) units box
+region deleting block INF INF INF INF  $(zlo+0.5) $(zhi-0.5) units box side out
+group delete_water region deleting
+group delete_water include molecule
+delete_atoms group delete_water
+
+change_box all z delta -10 10 units box
+change_box all boundary p p f
+kspace_modify slab 3.0
+
+region zwallLO block INF INF INF INF $(zlo) $(zlo+v_GRAPHENE_LATTICE_CONST*.75) units box
+create_atoms 17 region zwallLO 
+group LOzwall1 type 17
+group LOzwall2 region zwallLO
+group LOzwall intersect LOzwall1 LOzwall2
+group LOzwall1 delete
+group LOzwall2 delete
+
+region zwallHI block INF INF INF INF  $(zhi-v_GRAPHENE_LATTICE_CONST*.75) $(zhi) units box
+create_atoms 17 region zwallHI
+group HIzwall1 type 17
+group HIzwall2 region zwallHI
+group HIzwall intersect HIzwall1 HIzwall2
+group HIzwall1 delete
+group HIzwall2 delete
+
+group graphene union HIzwall LOzwall
+change_box all z delta -20 20 units box
+variable APPL_PRESS_FEED equal 100*${ATM_to_nm2}/count(LOzwall)
+variable APPL_PRESS_PERM equal 1*${ATM_to_nm2}/count(HIzwall)
+variable pos_HYDRATE_FORCE equal ${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_FEED}/${FinMD_to_FinN}
+variable neg_HYDRATE_FORCE equal -${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_PERM}/${FinMD_to_FinN}
+
+region centerline block INF INF INF INF 40.3447 46.3447 units box
+group centerlineatoms region centerline
+group centerlinewater intersect WATER centerlineatoms
+group centerlinewater include molecule
+delete_atoms group centerlinewater
+
+region cwall block INF INF INF INF 43.2447 43.4447 units box side out
+
+fix centerlinewall WATER wall/region cwall lj126 0.155865 3.178 10 
+region feedside block INF INF INF INF INF 43.2447 units box
+region permside block INF INF INF INF 43.4447 INF units box
+
+group feedatoms region feedside
+group permatoms region permside
+
+group feedwater intersect WATER feedatoms
+group permwater intersect WATER permatoms
+
+fix FEEDFORCEset LOzwall setforce  0.0 0.0 NULL
+fix PERMFORCEset HIzwall setforce  0.0 0.0 NULL
+fix TUBEFORCEset tube setforce  0.0 0.0 0.0
+
+
+fix FEEDFORCE LOzwall aveforce  NULL NULL v_pos_HYDRATE_FORCE
+fix PERMFORCE HIzwall aveforce  NULL NULL v_neg_HYDRATE_FORCE
+
+compute LOWALLcom LOzwall com
+compute HIWALLcom HIzwall com
+
+compute LOWALLforce LOzwall group/group WATER
+compute HIWALLforce HIzwall group/group WATER
+
+variable press_wall_lo equal -c_LOWALLforce[3]*${FinMD_to_FinN}/(${ATM_to_nm2}*${PISTON_AREA}*${ANG_to_M}*${ANG_to_M})
+variable press_wall_hi equal c_HIWALLforce[3]*${FinMD_to_FinN}/(${ATM_to_nm2}*${PISTON_AREA}*${ANG_to_M}*${ANG_to_M})
+
+#Collect sufficient data for morphological analysis
+compute        peratomstressvol all stress/atom NULL 
+compute        peratomvol all voronoi/atom
+
+variable       peratompress         atom (c_peratomstressvol[1]+c_peratomstressvol[2]+c_peratomstressvol[3])
+compute        totalpressure WATER reduce sum c_peratomstressvol[1] c_peratomstressvol[2] c_peratomstressvol[3]
+compute        peratommass all property/atom mass
+compute        totalmass WATER reduce sum c_peratommass
+compute        totalvol WATER reduce sum c_peratomvol[1]
+
+variable actualdensity equal c_totalmass*(1e8)^3/(6.022e23*c_totalvol)
+variable press equal -(c_totalpressure[1]+c_totalpressure[2]+c_totalpressure[3])/(3*c_totalvol)
+dump waterdata WATER custom/gz 5000 divi/water/pressuredata.*.gz id mol type mass q x y z v_peratompress c_peratomvol[1]
+dump_modify waterdata sort 2
+restart 5000 divi/restarts/restart.*
+
+neigh_modify exclude type 17 17
+thermo 5000
+fix 1water all nve 
+run 1
+
+compute PUTfeed feedwater temp/profile 1 1 1 xyz 5 5 10
+compute PUTperm permwater temp/profile 1 1 1 xyz 5 5 10
+fix 2feed feedwater temp/berendsen 300.0 300.0 200
+fix 2perm permwater temp/berendsen 300.0 300.0 200 
+fix_modify 2feed temp PUTfeed
+fix_modify 2perm temp PUTperm
+
+thermo_style custom step temp c_PUTfeed c_PUTperm press v_press v_actualdensity c_totalvol vol
+fix FXSHAKE WATER shake 0.0001 10 0 b 17 a 22 
+run 10000000

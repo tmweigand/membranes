@@ -1,0 +1,179 @@
+# General 
+units            real
+atom_style       full
+dimension        3
+newton           off
+boundary         p p p
+
+# Styles
+pair_style       lj/charmm/coul/long 10.0 12.0
+pair_modify      shift no mix arithmetic
+kspace_style     pppm 1.0e-4
+kspace_modify    diff ad
+bond_style       harmonic
+angle_style      harmonic
+dihedral_style   charmm
+improper_style   harmonic
+special_bonds    charmm
+neigh_modify exclude type 17 17
+
+#read_restart hydr/restarts/restart.*
+#write_dump PINplane atom pinplanecheck.dump
+#write_data system.lammps
+read_data system.lammps 
+molecule mol1 ../../molecules/tip3p.mol
+run 0
+dielectric 1.0
+neighbor 4.0 bin
+neigh_modify delay 0 every 1 check yes one 4000
+timestep 2.0
+run_style verlet
+group PINplane id 55840 56074 56128 57939 56227 57914 266378 692495 57852 56545 58332 58344 831917 763658 54405 56547 58272 58724 58731 58764 60502 60524 765368 68742 201552 556473 53656 58942 60475 688205 60644 60673 59030 125458 59304 754522 124720 124736 127506 127778 129169 129285 129294 129323 127609 129473 129676 130902 347617 123879 126466 126522 126642 126720 126757 126660 127983 126456 128485 128451 129855 129698 130126 130162 130227 131462 130083 130164 130352 112890 128741 130417 130402 130238 130335 131828 193358 195396 198482 188551 194199 195796 194384 195892 197220 197584 197657 408376 199296 199344 200681 626200 196255 196615 196644 195021 196724 198070 198001 199650 407236 198135 198364 198347 198388 198399 682720 763177 764761 201170 487293 256110 328239 263848 264781 264833 265063 266457 264873 268576 270091 556291 263804 265282 265609 267189 267207 267008 267364 267365 267456 267578 268835 269209 269294 270741 270755 270754 270934 272203 272359 275251 275245 266102 268034 269325 268044 269717 336438 269689 338290 339912 479487 275407 762800 486154 278065 765104 486259 764054 347028 319597 331994 335171 336755 336824 336887 335314 338798 336698 338553 336865 338673 137257 765739 330713 332306 334218 542308 544876 338979 339193 339077 339072 339206 339297 339304 339391 339266 339482 339493 339641 132200 548538 340760 339840 332828 400980 337991 336256 339835 403216 404334 404528 404664 406392 199001 339790 409594 409874 409580 409742 411028 411166 829343 391456 402254 408177 408187 408246 408277 408931 200530 408408 393721 410365 410405 410578 412003 410567 412031 412035 413734 413741 413777 414893 415055 415056 415027 415216 696499 416307 416488 68649 416249 416250 417482 67451 473378 474270 477938 476142 477913 477756 486792 479499 485285 479957 476732 477011 478372 478425 478427 478571 687660 478762 478900 478925 478938 479964 478586 480150 480450 272384 483266 483101 135433 475741 478906 479088 487112 487116 554874 547891 549198 552435 552615 555393 132370 696122 696119 765860 536226 538120 333425 541482 332328 541687 546793 548357 552967 551123 551137 551293 551492 551824 551531 552745 552716 556044 554404 549975 555892 555551 555583 555578 555770 555888 765746 556865 534925 533055 546803 617152 617187 548824 548783 617177 548825 551835 551804 612481 615397 615579 618926 618888 618985 625995 614031 616032 616163 617849 618025 617883 616520 618239 619621 604299 618160 618396 618638 619865 619707 620094 620111 620255 621247 621285 673219 676539 46408 682225 683655 685522 687121 687302 687403 686519 684788 686603 686631 688101 687968 686543 688029 688396 62094 754357 686638 754454 756250 756276 479709 759452 68416 137877 748086 120616 753018 754617 754493 752998 754786 754979 555378 764597 757367 757407 760481 760321 551376 761711 763311 763175 762964 764369 764408 765774 764574 763314 765416 764398 765800 754319 756057 757800 759202 826349 826149 826192 826178 827755 827857 827867 826396 620604 827877 619142 556946 626021 556819 746629 823063 824803 824947 826862 823569 825164 826583 826811 826850 826955 827026 826595 549915 822241 823864 824212 823639 825489 825531 825515 825511 825610 825663 825760 54341 825893 825938 827158 486871 
+pair_coeff 15 15 0.155865 3.178
+pair_coeff 16 16 0.00000 0.000000
+bond_coeff 17 4.50000000e+02 1.011800000e+00
+angle_coeff 22 5.50000000e+01 1.08150000e+02
+angle_coeff 23 5.50000000e+01 1.08150000e+02
+set type 15 charge -0.84844
+set type 16 charge 0.42422 
+set type 4 charge -0.587508921
+
+variable PISTON_AREA equal  (xhi-xlo)*(yhi-ylo)
+variable FinMD_to_FinN equal 6.94768717535204e-11
+variable ATM_to_nm2 equal 101325
+variable ANG_to_M equal 1e-10
+
+group walls_delete type 17
+delete_atoms group walls_delete
+group walls_delete delete
+
+
+change_box all z final -300 300 units box
+displace_atoms all move 0 0 -86.5 units box
+change_box all z final -250 175 units box
+
+region permFLUID block INF INF INF INF INF 155 side out units box
+lattice fcc 4.882444444
+create_atoms 0 region permFLUID mol mol1 322
+
+region feedFLUID block INF INF INF INF -155 INF side out units box
+lattice fcc 4.882444444
+
+
+create_atoms 19 region feedFLUID subset 2000 413
+create_atoms 20 region feedFLUID subset 2000 3123
+pair_coeff 19 19 0.320 2.45
+pair_coeff 20 20 0.470 4.40
+set type 19 charge 1
+set type 20 charge -1
+
+
+group SODIUM type 19
+group CHLORIDE type 20
+group SALT type 19 20
+delete_atoms overlap 1.5 SODIUM CHLORIDE mol yes
+
+label packloop 
+variable p loop 1000
+create_atoms 19 region feedFLUID subset $(2000-count(SODIUM)) $(2121*v_p)
+
+group SODIUM type 19
+group SALT type 19 20
+run 0
+delete_atoms overlap 1.5 SODIUM CHLORIDE mol yes
+delete_atoms overlap 1.5 SODIUM SODIUM mol yes
+
+if "$(count(SALT)) == 4000" then "jump SELF packbreak"
+next p
+jump SELF packloop
+label packbreak
+
+create_atoms 0 region feedFLUID mol mol1 322
+group WATER type 15 16
+group feedSTUFF region feedFLUID 
+group feedWATER intersect WATER feedSTUFF
+run 0
+delete_atoms overlap 1.5 feedWATER SALT mol yes
+
+
+region EDGEPROTECT block INF INF INF INF $(zlo+1) $(zhi-1) units box side out
+group deleteatoms1 region EDGEPROTECT
+group deleteatoms intersect WATER deleteatoms1
+delete_atoms group deleteatoms mol yes
+
+change_box all z delta -12 12 units box
+
+lattice hcp 3.994727273
+region zwallLO block INF INF INF INF $(zlo) $(zlo+3.994727273*.75) units box
+create_atoms 17 region zwallLO 
+group LOzwall1 type 17
+group LOzwall2 region zwallLO
+group LOzwall intersect LOzwall1 LOzwall2
+group LOzwall1 delete
+group LOzwall2 delete
+
+region zwallHI block INF INF INF INF $(zhi-3.994727273*.75) $(zhi) units box
+create_atoms 17 region zwallHI
+group HIzwall1 type 17
+group HIzwall2 region zwallHI
+group HIzwall intersect HIzwall1 HIzwall2
+group HIzwall1 delete
+group HIzwall2 delete
+
+group WALLS union LOzwall HIzwall
+
+change_box all z delta -50 50 units box
+
+write_data check.lammps
+fix tether PINplane spring/self 427.6 
+fix miniSETFORCE WALLS setforce 0 0 0
+minimize         1.0e-8 1.0e-8 1000 100000
+unfix miniSETFORCE
+unfix tether
+reset_atom_ids
+
+group WATER delete
+group WATER type 15 16
+group SOLID subtract all WATER WALLS
+
+fix tether PINplane spring/self 427.6 
+variable APPL_PRESS_FEED equal ${FEEDP}*${ATM_to_nm2}/count(LOzwall)
+variable APPL_PRESS_PERM equal 100*${ATM_to_nm2}/count(HIzwall)
+
+variable pos_HYDRATE_FORCE equal ${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_FEED}/${FinMD_to_FinN}
+variable neg_HYDRATE_FORCE equal -${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_PERM}/${FinMD_to_FinN}
+
+fix FEEDFORCEset LOzwall setforce  0.0 0.0 NULL
+fix PERMFORCEset HIzwall setforce  0.0 0.0 NULL
+
+fix FEEDFORCE LOzwall aveforce  NULL NULL v_pos_HYDRATE_FORCE
+fix PERMFORCE HIzwall aveforce  NULL NULL v_neg_HYDRATE_FORCE
+
+compute        peratomstressvol all stress/atom NULL 
+compute        peratomvol all voronoi/atom
+compute        peratomdisplacement all displace/atom 
+
+variable       peratompress         atom (c_peratomstressvol[1]+c_peratomstressvol[2]+c_peratomstressvol[3])
+compute        totalpressure WATER reduce sum c_peratomstressvol[1] c_peratomstressvol[2] c_peratomstressvol[3]
+compute        peratommass all property/atom mass
+compute        totalmass WATER reduce sum c_peratommass
+compute        totalvol WATER reduce sum c_peratomvol[1]
+
+variable actualdensity equal c_totalmass*(1e8)^3/(6.022e23*c_totalvol)
+variable press equal -(c_totalpressure[1]+c_totalpressure[2]+c_totalpressure[3])/(3*c_totalvol)
+dump waterdata WATER custom/gz 5000 perm/pressure/pressuredata.*.gz id mol type mass q x y z xu yu zu vx vy vz v_peratompress c_peratomvol[1] c_peratomdisplacement[1] c_peratomdisplacement[2] c_peratomdisplacement[3]
+dump systemdata all custom/gz 5000 perm/system/systemdata.*.gz id mol type mass q x y z vx vy vz v_peratompress c_peratomvol[1]
+dump membranedata SOLID custom/gz 5000 perm/membrane/membranedata.*.gz id mol type mass q x y z v_peratompress c_peratomvol[1]
+dump_modify waterdata sort 2
+dump_modify systemdata sort 2
+restart 5000 perm/restarts/restart.*
+
+
+thermo 5000
+fix 1 all nvt temp 300 300 200
+
+thermo_style custom step temp press v_press v_actualdensity c_totalvol
+fix FXSHAKE all rattle 0.0001 20 5000 b 17 a 22 t 5
+
+run 10000000
+unfix 1

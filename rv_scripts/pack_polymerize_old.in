@@ -1,0 +1,167 @@
+# Polymerization script for TMC carbon to MPD nitrogen 
+# Usage: Ensure call to LAMMPS is made from folder where data.lmps is saved, assume that reaction scripts are contained in ../../scripts from folder where data.lmps is saved.
+
+# System
+units            real
+atom_style       full
+dimension        3
+newton           off
+boundary         p p p 
+echo             none 
+
+# Styles
+pair_style       lj/charmm/coul/long 10.0 12.0
+pair_modify      shift no mix sixthpower
+kspace_style     pppm 1.0e-4
+kspace_modify    diff ad
+bond_style       harmonic
+angle_style      harmonic
+dihedral_style   charmm
+improper_style   harmonic
+special_bonds    charmm
+
+# Data file input
+# Set up some baseline variables, including the size of the box, and constant atom counts
+variable BOXSIZE equal 90*${mult}^(1/3)
+variable NUMMPD equal 300*${mult}
+variable NUMATOMS equal ${mult}*200*18+${mult}*300*16
+
+# use a TMC molecule file to load in all needed parameters, add two extra spots for impropers
+# because we are forming new bonds
+read_data        ../../molecules/TMC_converted.lmps extra/improper/per/atom 2
+# remove the first TMC molecule to have a clean domain
+delete_atoms group all
+# set box to desired size
+change_box all x final 0 ${BOXSIZE} y final 0 ${BOXSIZE} z final 0 ${BOXSIZE}
+# create lattic locations to insert MPD and TMC on to prevent ring spearing 
+lattice fcc 11.3
+molecule MPDmol ../../molecules/MPD.mol 
+molecule TMCmol ../../molecules/TMC.mol
+
+# Put MPD on the lattice, this is the final random packing of MPD
+create_atoms 0 box subset ${NUMMPD} $(23*v_rand) mol MPDmol 212123 
+group MPDs union all
+
+
+# need to loop the insertion of TMC, so that MPD and TMC are not inserted on the same lattice points
+#initial pack loop 
+variable p loop 1000
+label packloop
+variable NUMTMC equal (${NUMATOMS}-$(atoms))/18
+create_atoms 0 box subset ${NUMTMC} $(11*v_p*v_rand) mol TMCmol 325132
+group TMCs subtract all MPDs 
+delete_atoms overlap 1.01 TMCs all mol yes
+if "$(atoms) == ${NUMATOMS}" then "jump SELF SETRXN"
+next p
+jump SELF packloop
+
+
+label SETRXN
+molecule mol1 ../../scripts/MPD_TMC_prerxn.mol
+molecule mol2 ../../scripts/MPD_TMC_postrxn.mol
+variable BONDFREQ equal 50
+
+## NEEDS TO HAPPEN ONCE BUT CRASHES IF SET AT THE WRONG TIME
+
+group NUM_AMIDE type 7
+variable MAX_BONDS equal count(NUM_AMIDE)
+variable TARGET_BONDS equal (${MAX_BONDS}*${xlink})
+jump SELF packbreak
+
+
+
+
+label packbreak
+#reset_atom_ids
+# Settings
+dielectric       1.0
+neighbor         2.0 bin
+neigh_modify     delay 0 every 1 check yes
+timestep         10.0
+run_style        verlet
+
+# Minimization Step
+min_style        sd
+minimize         1.0e-5 1.0e-5 10000 100000
+min_style        cg
+min_modify       line quadratic
+minimize         1.0e-8 1.0e-8 10000 100000
+
+timestep 1.0
+
+# restart 10000 poly/restarts/polym.restart 
+
+# reaction loop 
+
+label loop
+variable a loop 1000
+
+
+fix PArxn all bond/react stabilization yes statted_grp .03 &
+  react rxn1 all ${BONDFREQ} 0.0 5.0 mol1 mol2 ../../scripts/MPDTMC_rxnmap.in
+reset_atom_ids
+velocity all create 300.0 $(24*v_a*v_rand)
+thermo 100
+thermo_style custom step temp press density f_PArxn[1]
+variable PAbonds_made equal f_PArxn[1]
+variable BONDS_LEFT equal ${TARGET_BONDS}-f_PArxn[1]
+print "==================================Current bonds formed = ${PAbonds_made} Minimum bonds desired = ${TARGET_BONDS}======================================="
+print "==================================NVT PA POLYMERIZATION RUN: 300 C==============================="
+fix 1 statted_grp_REACT nvt temp 300 300 $(100.0*dt)
+fix 4 bond_react_MASTER_group temp/rescale 50 300 300 10 1
+run           10000
+unfix 1
+unfix 4
+
+create_atoms 0 box subset 3 $(23*v_a*v_rand) mol MPDmol 212123 
+create_atoms 0 box subset 2 $(11*v_a*v_rand) mol TMCmol 325132
+
+fix 1 statted_grp_REACT npt temp 300 300 $(100.0*dt) iso 0.5 0.5 $(100.0*dt)
+fix 4 bond_react_MASTER_group temp/rescale 50 300 300 10 1
+run           10000
+unfix 1
+unfix 4
+#reset_atom_ids
+thermo_style one
+write_restart poly/restarts/polym.restart
+if "${PAbonds_made} >= ${TARGET_BONDS}" then "jump SELF break" & 
+  "unfix PArxn"
+if "${a} == 10" then "jump SELF delete_unxlinked" & 
+  "unfix PArxn"
+unfix PArxn
+next a
+jump SELF loop
+
+label delete_unxlinked
+group CL_ALL type 18
+variable atom_charge_xlinked atom q==-0.3983750
+group XLINKED_ATOMS variable atom_charge_xlinked
+group XLINKED_ATOMS include molecule
+group UNXLINKED_ATOMS subtract all XLINKED_ATOMS
+
+group UNXLINKED_TMC intersect UNXLINKED_ATOMS CL_ALL
+group UNXLINKED_TMC include molecule
+
+variable count_UNXLINKED_TMC equal count(UNXLINKED_TMC)/18
+variable NUM_NEW_TMC equal ${count_UNXLINKED_TMC}
+variable init_NUM_NEW_TMC equal ${NUM_NEW_TMC}
+delete_atoms group UNXLINKED_TMC
+#reset_atom_ids
+
+variable r loop 1000
+label repackloop
+create_atoms 0 box subset ${NUM_NEW_TMC} $(11*v_r*v_rand) mol TMCmol 325132
+group TMCs subtract all XLINKED_ATOMS UNXLINKED_ATOMS
+delete_atoms overlap 1.01 TMCs all mol yes
+variable count_TMC equal count(TMCs)/18
+variable NUM_NEW_TMC equal ${init_NUM_NEW_TMC}-${count_TMC}
+group TMCs subtract all XLINKED_ATOMS UNXLINKED_ATOMS
+if "$(count(TMCs)) == $(v_NUM_NEW_TMC*18)" then "jump SELF packbreak"
+next r
+jump SELF repackloop
+
+label break
+# Data file output
+#reset_atom_ids
+write_data      poly/polym.lmps
+

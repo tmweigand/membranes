@@ -1,0 +1,122 @@
+# General 
+units            real
+atom_style       full
+dimension        3
+newton           off
+boundary         p p p
+
+# Styles
+pair_style       lj/charmm/coul/long 10.0 12.0
+pair_modify      shift no mix sixthpower
+kspace_style     pppm 1.0e-4
+kspace_modify    diff ad
+bond_style       harmonic
+angle_style      harmonic
+dihedral_style   charmm
+improper_style   harmonic
+special_bonds    charmm
+
+read_data ../../molecules/pre_replicate.lmps
+velocity all set 0 0 0 
+molecule mol1 ../../molecules/tip3p.mol
+dielectric 1.0
+neighbor 4.0 bin
+neigh_modify delay 0 every 1 check yes one 4000
+timestep 2.0
+run_style verlet
+
+replicate 2 4 4
+variable vxlen equal $(xhi-xlo)
+variable vylen equal $(yhi-ylo)
+variable vzlen equal $(zhi-zlo)
+
+region rDelete block INF INF $(ylo) $(yhi-v_vylen/4) $(zlo+v_vzlen/4) $(zhi-v_vzlen/4) side out units box
+group gDelete region rDelete
+group gDelete include molecule
+delete_atoms group gDelete
+reset_atom_ids
+print -$(v_vylen/2)
+change_box all y delta 0 -30 units box
+displace_atoms all move 0 -$(v_vylen/2) 0 units box
+displace_atoms all move 0 0 $(-zlo) units box
+change_box all x delta -$(xlo) -$(xlo) y delta -$(ylo) -$(ylo) z delta -$(zlo+100) -$(zlo-20) units box
+
+group SOLID union all
+
+region BOTFLUID block INF INF INF 72.5 95 295 side out units box
+region TOPFLUID block INF INF 85 INF 95 295 side out units box
+region EDGEPROTECT block INF INF INF INF -95 405 units box
+region FLUID intersect 3 BOTFLUID TOPFLUID EDGEPROTECT
+lattice fcc 5.2
+create_atoms 0 region FLUID mol mol1 322
+change_box all z delta -10 10 units box 
+group WATER subtract all SOLID
+
+variable PISTON_AREA equal  (xhi-xlo)*(yhi-ylo)
+variable FinMD_to_FinN equal 6.94768717535204e-11
+variable ATM_to_nm2 equal 101325
+variable ANG_to_M equal 1e-10
+
+lattice hcp 3.984799762
+region zwallLO block INF INF INF INF $(zlo) $(zlo+3.984799762*.75) units box
+create_atoms 17 region zwallLO 
+group LOzwall1 type 17
+group LOzwall2 region zwallLO
+group LOzwall intersect LOzwall1 LOzwall2
+group LOzwall1 delete
+group LOzwall2 delete
+
+region zwallHI block INF INF INF INF $(zhi-3.984799762*.75) $(zhi) units box
+create_atoms 17 region zwallHI
+group HIzwall1 type 17
+group HIzwall2 region zwallHI
+group HIzwall intersect HIzwall1 HIzwall2
+group HIzwall1 delete
+group HIzwall2 delete
+
+change_box all z delta -100 100 units box
+group WALLS union LOzwall HIzwall
+group ALLSOLID union LOzwall HIzwall SOLID
+
+fix setForceMinimize ALLSOLID setforce 0 0 0
+minimize         1.0e-8 1.0e-8 1000 100000
+unfix setForceMinimize
+
+variable APPL_PRESS_FEED equal 1*${ATM_to_nm2}/count(LOzwall)
+variable APPL_PRESS_PERM equal 1*${ATM_to_nm2}/count(HIzwall)
+
+variable pos_HYDRATE_FORCE equal ${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_FEED}/${FinMD_to_FinN}
+variable neg_HYDRATE_FORCE equal -${PISTON_AREA}*${ANG_to_M}*${ANG_to_M}*${APPL_PRESS_PERM}/${FinMD_to_FinN}
+
+fix FEEDFORCEset LOzwall setforce  0.0 0.0 NULL
+fix PERMFORCEset HIzwall setforce  0.0 0.0 NULL
+
+fix FEEDFORCE LOzwall aveforce  NULL NULL v_pos_HYDRATE_FORCE
+fix PERMFORCE HIzwall aveforce  NULL NULL v_neg_HYDRATE_FORCE
+
+compute        peratomstressvol all stress/atom NULL 
+compute        peratomvol all voronoi/atom
+
+variable       peratompress         atom (c_peratomstressvol[1]+c_peratomstressvol[2]+c_peratomstressvol[3])
+compute        totalpressure WATER reduce sum c_peratomstressvol[1] c_peratomstressvol[2] c_peratomstressvol[3]
+compute        peratommass all property/atom mass
+compute        totalmass WATER reduce sum c_peratommass
+compute        totalvol WATER reduce sum c_peratomvol[1]
+
+variable actualdensity equal c_totalmass*(1e8)^3/(6.022e23*c_totalvol)
+variable press equal -(c_totalpressure[1]+c_totalpressure[2]+c_totalpressure[3])/(3*c_totalvol)
+dump waterdata all custom/gz 5000 pressure/pressuredata.*.gz id mol type mass q x y z vx vy vz v_peratompress c_peratomvol[1]
+dump_modify waterdata sort 2
+restart 5000 restarts/restart.*
+
+write_data test.lmps
+
+thermo 5000
+fix 1water WATER nvt temp 300 300 200 
+fix 1walls WALLS nve
+
+#fix TEMPSOLID ALLSOLID temp/berendsen 300.0 300.0 200 
+thermo_style custom step temp press v_press v_actualdensity c_totalvol
+fix FXSHAKE WATER rattle 0.0001 20 5000 b 17 a 22 
+run 10000000
+unfix 1

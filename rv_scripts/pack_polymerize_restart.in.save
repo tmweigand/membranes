@@ -1,0 +1,148 @@
+# Polymerization script for TMC carbon to MPD nitrogen 
+# Usage: Ensure call to LAMMPS is made from folder where data.lmps is saved, assume that reaction scripts are contained in ../../scripts from folder where data.lmps is saved.
+
+# System
+units            real
+atom_style       full
+dimension        3
+newton           off
+boundary         p p p 
+echo             none 
+
+# Styles
+pair_style       lj/charmm/coul/long 10.0 12.0
+pair_modify      shift no mix sixthpower
+kspace_style     pppm 1.0e-4
+kspace_modify    diff ad
+bond_style       harmonic
+angle_style      harmonic
+dihedral_style   charmm
+improper_style   harmonic
+special_bonds    charmm
+
+# Data file input
+variable BOXSIZE equal 90*${mult}^(1/3)
+variable NUMMPD equal 300*${mult}
+variable NUMATOMS equal ${mult}*200*18+${mult}*300*16
+
+
+read_restart poly/restarts/polym.restart.* 
+timestep 1.0
+reset_atom_ids
+molecule mol1 ../../scripts/MPD_TMC_prerxn.mol
+molecule mol2 ../../scripts/MPD_TMC_postrxn.mol
+lattice fcc 11.3
+
+variable BONDFREQ equal 50
+group NUM_AMIDE type 7
+variable MAX_BONDS equal count(NUM_AMIDE)
+thermo 100
+
+min_style        sd
+minimize         1.0e-5 1.0e-5 10000 100000
+
+
+restart 10000 poly/restarts/polym.restart 
+
+variable init_atoms equal $(atoms)
+variable MADE_BONDS equal (${NUMATOMS}-${init_atoms})/2
+variable TARGET_BONDS equal (${MAX_BONDS}*${xlink})-${MADE_BONDS}
+variable TOTAL_TARGET_BONDS equal (${MAX_BONDS}*${xlink})
+
+molecule MPDmol ../../molecules/MPD.mol 
+molecule TMCmol ../../molecules/TMC.mol
+
+
+label packinit
+group CL_ALL type 18
+variable atom_charge atom q==-0.3983750
+group XLINKED_ATOMS variable atom_charge
+group XLINKED_ATOMS include molecule
+group UNXLINKED_ATOMS subtract all XLINKED_ATOMS
+group CL_UNXLINKED intersect UNXLINKED_ATOMS CL_ALL
+group CL_UNXLINKED include molecule
+
+variable count_TMC equal count(CL_UNXLINKED)/18
+variable NUM_NEW_TMC equal ${count_TMC}
+variable NUM_NEW_TMC2 equal ${count_TMC}
+if "${NUM_NEW_TMC2} <= 0" then "variable NUM_NEW_TMC2 equal 0"
+delete_atoms group CL_UNXLINKED
+group CL_UNXLINKED delete
+reset_atom_ids
+#write_data poly/unxlinked_tmc_deleted.lmps
+
+
+variable p loop 1000
+label packloop
+create_atoms 0 box subset ${NUM_NEW_TMC2} $(v_p*v_rand) mol TMCmol 132
+group TMCs subtract all XLINKED_ATOMS UNXLINKED_ATOMS
+delete_atoms overlap 1.01 TMCs all mol yes
+
+variable count_TMC equal count(TMCs)/18
+variable NUM_NEW_TMC2 equal ${NUM_NEW_TMC}-${count_TMC}
+if "${NUM_NEW_TMC2} <= 0" then "variable NUM_NEW_TMC2 equal 0"
+
+group TMCs delete
+group TMCs subtract all XLINKED_ATOMS UNXLINKED_ATOMS
+run 0
+if "$(count(TMCs)) == $(v_NUM_NEW_TMC*18)" then "jump SELF packbreak"
+next p
+jump SELF packloop
+label packbreak
+group XLINKED_ATOMS delete
+group UNXLINKED_ATOMS delete
+group CL_ALL delete
+
+reset_atom_ids
+min_style        sd
+minimize         1.0e-5 1.0e-5 10000 100000
+min_style        cg
+min_modify       line quadratic
+minimize         1.0e-8 1.0e-8 10000 100000
+
+#write_data poly/unxlinked_tmc_readded.lmps
+
+
+label SETRXN
+fix PArxn all bond/react stabilization yes statted_grp .03 &
+  react rxn1 all ${BONDFREQ} 0.0 5.0 mol1 mol2 ../../scripts/MPDTMC_rxnmap.in
+
+thermo 100
+thermo_style custom step temp press density f_PArxn[1]
+
+variable PAbonds_made equal f_PArxn[1]
+
+variable a loop 1000
+label loop
+print "==================================Current bonds formed = ${MADE_BONDS}+${PAbonds_made} Minimum bonds desired = ${MADE_BONDS}+${TARGET_BONDS}======================================="
+print "==================================NVT PA POLYMERIZATION RUN: 100,000 STEPS 300 C==============================="
+
+velocity all create 300.0 $(41234*v_a)
+fix 1 statted_grp_REACT npt temp 300 300 $(100.0*dt) iso 0.5 0.5 $(100.0*dt)
+fix 4 bond_react_MASTER_group temp/rescale 50 300 300 10 1
+run            10000
+unfix 1
+unfix 4
+fix 1 statted_grp_REACT nvt temp 300 300 $(100.0*dt)
+fix 4 bond_react_MASTER_group temp/rescale 50 300 300 10 1
+run           10000
+unfix 1
+unfix 4
+fix 1 statted_grp_REACT npt temp 300 300 $(100.0*dt) iso 0.5 0.5 $(100.0*dt)
+fix 4 bond_react_MASTER_group temp/rescale 50 300 300 10 1
+run            10000
+unfix 1
+unfix 4
+reset_atom_ids
+if "$(v_PAbonds_made+v_MADE_BONDS) >= ${TOTAL_TARGET_BONDS}" then "jump SELF break"
+variable b equal ${a}
+next a
+if "${a} == 10" then "jump SELF packinit" &
+		     "variable delete a" &
+		     "variable delete p"
+jump SELF loop
+
+label break
+# Data file output
+reset_atom_ids
+write_data      poly/term_final.lmps
