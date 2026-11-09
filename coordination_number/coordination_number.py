@@ -46,6 +46,64 @@ def coordination_numbers(pair_indices, pair_distances, cutoff_nm, oxygen_count):
     return coordination
 
 
+def process_frame(
+    frame_index,
+    timestep,
+    atom_ids,
+    positions,
+    types,
+    box,
+    oxygen_type,
+    region_bounds,
+    cutoffs_nm,
+    stats,
+):
+    """Process one frame and update coordination statistics."""
+
+    atom_ids = np.asarray(atom_ids)
+    positions = np.asarray(positions, dtype=np.float64)
+    types = np.asarray(types)
+
+    oxygen_mask = types.astype(int) == int(oxygen_type)
+
+    oxygen_ids = atom_ids[oxygen_mask]
+    oxygen_pos = positions[oxygen_mask]
+
+    if oxygen_pos.size == 0:
+        raise ValueError(
+            f"No oxygen atoms found in frame {frame_index}. "
+            f"Check oxygen_type={oxygen_type}."
+        )
+
+    if len(np.unique(oxygen_ids)) != len(oxygen_ids):
+        raise ValueError(f"Duplicate oxygen atom IDs in frame {frame_index}.")
+
+    box = validate_box(box, f"frame {frame_index}")
+
+    regions = classify_regions(oxygen_pos[:, 2], region_bounds)
+
+    # Find pairs once at the largest cutoff.
+    pairs, distances = self_capped_distance(
+        oxygen_pos,
+        max_cutoff=float(cutoffs_nm[-1]) * 10.0,
+        box=box,
+        return_distances=True,
+    )
+
+    print(
+        f"Frame {frame_index} | timestep {timestep} | "
+        f"oxygen atoms {len(oxygen_pos)} | "
+        f"pairs at {cutoffs_nm[-1]:.2f} nm {len(pairs)}"
+    )
+
+    for cutoff_nm in cutoffs_nm:
+
+        cn = coordination_numbers(pairs, distances, cutoff_nm, len(oxygen_pos))
+
+        for region in region_bounds:
+            update_stats(stats[float(cutoff_nm)][region], cn[regions == region])
+
+
 def update_stats(stats, values):
     values = np.asarray(values, dtype=np.int64)
     if values.size == 0:
@@ -132,48 +190,6 @@ def main():
     frame_count = 0
     input_description = ""
 
-    def process_frame(frame_index, timestep, atom_ids, positions, types, box):
-        nonlocal frame_count
-        frame_count += 1
-
-        atom_ids = np.asarray(atom_ids)
-        positions = np.asarray(positions, dtype=np.float64)
-        types = np.asarray(types)
-
-        oxygen_mask = types.astype(int) == int(config.oxygen_type)
-        oxygen_ids = atom_ids[oxygen_mask]
-        oxygen_pos = positions[oxygen_mask]
-
-        if oxygen_pos.size == 0:
-            raise ValueError(
-                f"No oxygen atoms found in frame {frame_index}. "
-                f"Check oxygen_type={config.oxygen_type}."
-            )
-        if len(np.unique(oxygen_ids)) != len(oxygen_ids):
-            raise ValueError(f"Duplicate oxygen atom IDs in frame {frame_index}.")
-
-        box = validate_box(box, f"frame {frame_index}")
-        regions = classify_regions(oxygen_pos[:, 2], config.region_bounds)
-
-        # Find pairs once at the largest cutoff. Using wrapped coordinates.
-        # Minimum-image distances are applied by the box.
-        pairs, distances = self_capped_distance(
-            oxygen_pos,
-            max_cutoff=float(config.cutoffs_nm[-1]) * 10.0,
-            box=box,
-            return_distances=True,
-        )
-
-        print(
-            f"Frame {frame_index} | timestep {timestep} | "
-            f"oxygen atoms {len(oxygen_pos)} | pairs at 0.80 nm {len(pairs)}"
-        )
-
-        for cutoff_nm in config.cutoffs_nm:
-            cn = coordination_numbers(pairs, distances, cutoff_nm, len(oxygen_pos))
-            for region in config.region_bounds:
-                update_stats(stats[float(cutoff_nm)][region], cn[regions == region])
-
     if config.input_mode == "trajectory":
         if not os.path.isfile(config.trajectory_file):
             raise FileNotFoundError(
@@ -200,13 +216,19 @@ def main():
         for ts in universe.trajectory:
             timestep = ts.data.get("step", ts.frame)
             process_frame(
-                ts.frame,
-                timestep,
-                universe.atoms.ids,
-                universe.atoms.positions,
-                universe.atoms.types,
-                ts.dimensions,
+                frame_index=ts.frame,
+                timestep=timestep,
+                atom_ids=universe.atoms.ids,
+                positions=universe.atoms.positions,
+                types=universe.atoms.types,
+                box=ts.dimensions,
+                oxygen_type=config.oxygen_type,
+                region_bounds=config.region_bounds,
+                cutoffs_nm=config.cutoffs_nm,
+                stats=stats,
             )
+
+            frame_count += 1
 
     else:
         frame_files = get_frame_files(
@@ -236,13 +258,19 @@ def main():
                 )
             )
             process_frame(
-                frame_index,
-                timestep,
-                atom_ids,
-                positions,
-                types,
-                config.frame_files_box,
+                frame_index=frame_index,
+                timestep=timestep,
+                atom_ids=atom_ids,
+                positions=positions,
+                types=types,
+                box=config.frame_files_box,
+                oxygen_type=config.oxygen_type,
+                region_bounds=config.region_bounds,
+                cutoffs_nm=config.cutoffs_nm,
+                stats=stats,
             )
+
+            frame_count += 1
 
     # Summary statistics and output files
     summary_path = os.path.join(config.output_dir, "coordination_summary.dat")
