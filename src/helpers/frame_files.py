@@ -1,39 +1,55 @@
 import os
 import glob
 import re
-from membranes.helpers import helpers
+import pmmoto
 
 
-def get_frame_files(
-    pattern=None, use_helpers_get_files=False, machine=None, file_type=None
-):
-    """Get frame files using the original helper by default, or a custom glob."""
-    if use_helpers_get_files:
-        files = helpers.get_files(machine=machine, file_type=file_type)
-    else:
-        if not pattern:
-            raise ValueError(
-                "Set frame_files_pattern when use_helpers_get_files=False."
+def get_timestep(filename):
+    numbers = re.findall(r"\d+", os.path.basename(filename))
+
+    if not numbers:
+        raise ValueError(f"Could not identify timestep in {filename}")
+
+    return int(numbers[-1])
+
+
+def get_frame_files(config):
+    search_pattern = os.path.join(config.input_path, config.file_pattern)
+    frame_files = glob.glob(search_pattern)
+    if not frame_files:
+        raise FileNotFoundError(f"No frame files found matching: {search_pattern}")
+    frame_files.sort(key=get_timestep)
+
+    return frame_files
+
+
+def read_frame_files(config, stats, analysis_function, process_frame):
+    frame_files = get_frame_files(config)
+    frame_count = 0
+    for frame_index, path in enumerate(frame_files):
+        atom_ids, positions, types, masses, domain, timestep = (
+            pmmoto.io.data_read.read_lammps_atoms(
+                path,
+                unwrapped_coordinates=config.unwrapped_coordinates,
+                initial_iteration=config.initial_iteration,
+                simulation_timestep=config.simulation_timestep,
             )
-        files = [path for path in glob.glob(pattern) if os.path.isfile(path)]
-
-    # Sort numerically by the final number in the filename (e.g. timestep).
-    def sort_key(path):
-        name = os.path.basename(path)
-        numbers = re.findall(r"\d+", name)
-        if numbers:
-            return (0, int(numbers[-1]), name)
-        return (1, 0, name)
-
-    files = sorted(files, key=sort_key)
-    if not files:
-        source = (
-            f"helpers.get_files(machine={machine!r}, file_type={file_type!r})"
-            if use_helpers_get_files
-            else f"glob pattern {pattern!r}"
         )
-        raise FileNotFoundError(f"No frame files found using {source}.")
-    return files
+        frame_data = {
+            "ids": atom_ids,
+            "positions": positions,
+            "types": types,
+            "box": config.frame_files_box,
+        }
+
+        process_frame(
+            frame_data, frame_index, timestep, config, stats, analysis_function
+        )
+
+        frame_count += 1
+    input_description = config.input_path
+
+    return frame_count, input_description
 
 
 def safe_label(text):
