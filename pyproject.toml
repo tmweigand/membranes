@@ -10,7 +10,7 @@ dependencies = [
     "numpy",
     "matplotlib",
     "mpi4py",
-    "pmmoto",
+    "pmmoto>=1.0.9",
     "MDanalysis",
 ]
 
