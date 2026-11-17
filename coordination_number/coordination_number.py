@@ -277,7 +277,8 @@ def main():
         )
         validate_frame(oxygen_data, input_file, analysis.oxygen_type)
 
-        box = membranes.box.MD_box_from_domain(domain)
+        box = membranes.Box(domain)
+        box = box.MD_box_from_domain()
         n_pairs = analysis.process_frame(oxygen_data, box)
 
         print(

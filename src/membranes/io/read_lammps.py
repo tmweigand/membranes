@@ -5,9 +5,6 @@ import pmmoto
 import numpy as np
 import MDAnalysis as mda
 
-
-from ..box import validate_box
-
 __all__ = ["safe_label", "read_lammps_file"]
 
 
