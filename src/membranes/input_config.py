@@ -4,11 +4,13 @@ import glob
 from .sim_types.water_box import WaterBox
 from .sim_types.vickers_membrane import VickersMembrane
 from .sim_types.xu_membrane import XuMembrane
+from .sim_types.test_sim import TestSim
 
 SIM_TYPES = {
     "water_box": WaterBox,
     "vickers_membrane": VickersMembrane,
     "xu_membrane": XuMembrane,
+    "test_sim": TestSim,
 }
 
 
