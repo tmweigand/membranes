@@ -7,12 +7,12 @@ class VickersMembrane:
 
     oxygen_type = 15
 
-    box = [[0, 100], [0, 100], [0, 100]]
+    box = [[0, 175.8], [0, 175.8], [-287.0, 237.0]]
 
     region_bounds = {
-        "feed": (0, 0),
-        "membrane": (0, 0),
-        "permeate": (0, 0),
+        "feed": (-287.0, -100.0),
+        "membrane": (-100.0, 100.0),
+        "permeate": (100.0, 237.0),
     }
 
     cutoffs = [3.0, 8.0]  # In  angstroms

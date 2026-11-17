@@ -1,42 +1,47 @@
 import numpy as np
+from .box import Box
 
 
-def classify_regions(z_values, bounds):
-    labels = np.full(len(z_values), "", dtype=object)
+class RegionClassifier:
+    def __init__(self, bounds, box: Box):
+        self.bounds = bounds
+        self.box = box
+        self.check_bounds()
 
-    if len(bounds) == 1:
-        only_region = next(iter(bounds))
-        low, high = bounds[only_region]
-        if np.isneginf(low) and np.isposinf(high):
-            return np.full(len(z_values), only_region, dtype=object)
+    def check_bounds(self):
+        """Check if the region bounds are valid and do not overlap."""
 
-    for region, (low, high) in bounds.items():
-        if region == "membrane" and "feed" in bounds and "permeate" in bounds:
-            mask = (z_values >= low) & (z_values <= high)
-        elif region == "feed" and "membrane" in bounds:
-            mask = z_values < high
-        elif region == "permeate" and "membrane" in bounds:
-            mask = z_values > low
-        else:
-            if np.isneginf(low):
-                mask = z_values <= high
-            elif np.isposinf(high):
-                mask = z_values > low
+        for region, (low, high) in self.bounds.items():
+            if self.box.domain[2, 0] > low or self.box.domain[2, 1] < high:
+                raise ValueError(
+                    f"Region {region} bounds ({low}, {high}) are outside the box domain ({self.box.domain[2, 0]}, {self.box.domain[2, 1]})."
+                )
+            elif low >= high:
+                raise ValueError(
+                    f"Invalid bounds for {region}: low ({low}) must be less than high ({high})."
+                )
             else:
-                mask = (z_values > low) & (z_values <= high)
+                overlap = False
+                for other_region, (other_low, other_high) in self.bounds.items():
+                    if region != other_region:
+                        if not (high <= other_low or low >= other_high):
+                            overlap = True
+                            break
+                if overlap:
+                    raise ValueError(
+                        f"Region {region} bounds ({low}, {high}) overlap with another region's bounds."
+                    )
+                elif low == high:
+                    raise ValueError(
+                        f"Region {region} bounds ({low}, {high}) are equal; low must be less than high."
+                    )
 
-        # If any overlaps occur, raise an error. This ensures that each oxygen atom is assigned to exactly one region.
-        overlap = mask & (labels != "")
-        if np.any(overlap):
-            raise ValueError(
-                f"Region definitions overlap for {region!r}; check region_bounds."
-            )
-        labels[mask] = region
+    def classify_regions(self, z_values):
+        labels = np.full(len(z_values), "", dtype=object)
 
-    # if np.any(labels == ""):
-    #    examples = z_values[labels == ""][:5]
-    #    raise ValueError(
-    #        "Some oxygen atoms do not fall into any region. "
-    #        f"Example z coordinates: {examples}. Check region_bounds."
-    #    )
-    return labels
+        for region, (low, high) in self.bounds.items():
+            mask = (z_values > low) & (z_values <= high)
+
+            labels[mask] = region
+
+        return labels

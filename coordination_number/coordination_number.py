@@ -85,6 +85,8 @@ class CoordinationNumber:
         self.oxygen_type = sim.oxygen_type
         self.region_bounds = sim.region_bounds
         self.frames_processed = 0
+        self.box = membranes.Box(domain=config.box)
+        self.regions = membranes.RegionClassifier(self.region_bounds, self.box)
 
         start, stop = sim.cutoffs
         step = sim.cutoff_step
@@ -100,13 +102,13 @@ class CoordinationNumber:
     def max_cutoff_angstrom(self):
         return float(self.stats.cutoffs_angstrom.max())
 
-    def find_pairs(self, positions, box):
+    def find_pairs(self, positions):
         """Neighbour search only: all pairs within the largest cutoff."""
         # Small pad so pairs exactly at the max cutoff are not lost to round-off.
         return self_capped_distance(
             positions,
             max_cutoff=self.max_cutoff_angstrom + 1e-6,
-            box=box,
+            box=self.box.MD_box_from_domain(),
             return_distances=True,
         )
 
@@ -117,14 +119,14 @@ class CoordinationNumber:
             for region in self.region_bounds:
                 self.stats.update(i, region, cn[regions == region])
 
-    def process_frame(self, atom_data, box):
+    def process_frame(self, atom_data):
         """Full pipeline for one frame. Returns the number of pairs found."""
         positions = atom_data["coords_unwrapped"]
 
-        regions = membranes.classify_regions(positions[:, 2], self.region_bounds)
+        labels = self.regions.classify_regions(positions[:, 2])
 
-        pairs, distances = self.find_pairs(positions, box)
-        self.accumulate_frame(pairs, distances, regions, len(positions))
+        pairs, distances = self.find_pairs(positions)
+        self.accumulate_frame(pairs, distances, labels, len(positions))
         self.frames_processed += 1
         return len(pairs)
 
@@ -270,16 +272,14 @@ def main():
     analysis = CoordinationNumber(config)
 
     for input_file in config.get_input_files():
-        oxygen_data, domain, timestep = membranes.io.read_lammps_file(
+        oxygen_data, _, timestep = membranes.io.read_lammps_file(
             file=input_file,
             config=config,
             extract_atom=analysis.oxygen_type,
         )
         validate_frame(oxygen_data, input_file, analysis.oxygen_type)
 
-        box = membranes.Box(domain)
-        box = box.MD_box_from_domain()
-        n_pairs = analysis.process_frame(oxygen_data, box)
+        n_pairs = analysis.process_frame(oxygen_data)
 
         print(
             f"Frame {analysis.frames_processed} | timestep {timestep} | "
