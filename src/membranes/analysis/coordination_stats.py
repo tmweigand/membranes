@@ -1,53 +1,100 @@
 from collections import Counter
+from ..regions import RegionClassifier
+from .coordination_number import CoordinationNumber
 import numpy as np
 
-ANGSTROM_PER_NM = 10.0
 
+class CoordinationStats(CoordinationNumber):
+    """Accumulates coordination-number observations per (cutoff, region)."""
 
-class CoordinationStats:
-    """Accumulates coordination-number observations per (cutoff, region).
+    def __init__(self, cutoffs, regions: RegionClassifier | None = None):
+        super().__init__(cutoffs, regions)
+        self.counter = 0
+        if isinstance(self.cutoffs, (float, int)):
+            if self.regions is None:
+                self._data = {
+                    "sum": 0,
+                    "sum_sq": 0.0,
+                    "count": 0,
+                    "frequency": Counter(),
+                }
+            else:
+                self._data = {
+                    region: {
+                        "sum": 0,
+                        "sum_sq": 0.0,
+                        "count": 0,
+                        "frequency": Counter(),
+                    }
+                    for region in self.regions.bounds
+                }
+        else:
+            if self.regions is None:
+                self._data = {
+                    i: {"sum": 0, "sum_sq": 0.0, "count": 0, "frequency": Counter()}
+                    for i in self.cutoffs
+                }
+            else:
+                self._data = {
+                    (cutoff, region): {
+                        "sum": 0,
+                        "sum_sq": 0.0,
+                        "count": 0,
+                        "frequency": Counter(),
+                    }
+                    for cutoff in self.cutoffs
+                    for region in self.regions.bounds
+                }
 
-    Cutoffs are identified by their integer index into `cutoffs_angstrom`,
-    which avoids floating-point dictionary keys.
-    """
+    def update(self, positions):
 
-    def __init__(self, cutoffs_angstrom, regions):
-        self.cutoffs_angstrom = np.asarray(cutoffs_angstrom, dtype=np.float64)
-        self.regions = list(regions)
-        self._data = {
-            (i, region): {"sum": 0, "sum_sq": 0.0, "count": 0, "frequency": Counter()}
-            for i in range(len(self.cutoffs_angstrom))
-            for region in self.regions
-        }
+        values = self.get_coordination_numbers(positions)
+        # print(values.keys())
+        if isinstance(self.cutoffs, (float, int)) and self.regions is None:
+            self._update(self._data, values)
+        else:
+            for key in values.keys():
+                self._update(self._data[key], values[key])
 
-    @property
-    def cutoffs_nm(self):
-        return self.cutoffs_angstrom / ANGSTROM_PER_NM
+    def _update(self, data, values):
+        data["sum"] += int(values.sum())
+        data["sum_sq"] += float(np.sum(values.astype(np.float64) ** 2))
+        data["count"] += int(values.size)
+        data["frequency"].update(values.tolist())
 
-    def update(self, cutoff_index, region, values):
-        values = np.asarray(values, dtype=np.int64)
-        if values.size == 0:
-            return
-        item = self._data[(cutoff_index, region)]
-        item["sum"] += int(values.sum())
-        item["sum_sq"] += float(np.sum(values.astype(np.float64) ** 2))
-        item["count"] += int(values.size)
-        item["frequency"].update(values.tolist())
+    def summary(self):
+        if isinstance(self.cutoffs, (float, int)) and self.regions is None:
+            return self._summary(self._data)
+        results = {}
+        for key, data in self._data.items():
+            results[key] = self._summary(data)
+        return results
 
-    def summary(self, cutoff_index, region):
-        """Return count, mean, and (population) std for one cutoff/region."""
-        item = self._data[(cutoff_index, region)]
-        count = item["count"]
+    def _summary(self, data):
+        count = data["count"]
         if count == 0:
             return {"count": 0, "mean": np.nan, "std": np.nan}
-        mean = item["sum"] / count
-        variance = max(item["sum_sq"] / count - mean**2, 0.0)
+        mean = data["sum"] / count
+        variance = max(data["sum_sq"] / count - mean**2, 0.0)
         return {"count": count, "mean": mean, "std": float(np.sqrt(variance))}
 
-    def distribution(self, cutoff_index, region):
-        """Return {cn: {"count": int, "probability": float}} sorted by cn."""
-        frequency = self._data[(cutoff_index, region)]["frequency"]
+    def distribution(self):
+
+        if isinstance(self.cutoffs, (float, int)) and self.regions is None:
+            return self._distribution(self._data)
+
+        results = {}
+
+        for key, data in self._data.items():
+            results[key] = self._distribution(data)
+
+        return results
+
+    def _distribution(self, data):
+
+        frequency = data["frequency"]
         total = sum(frequency.values())
+
         return {
             cn: {
                 "count": count,

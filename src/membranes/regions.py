@@ -9,7 +9,9 @@ class RegionClassifier:
         self.check_bounds()
 
     def check_bounds(self):
-        """Check if the region bounds are valid and do not overlap."""
+        """Check if the region bounds are valid and do not overlap.
+        These checks are performed based on the z-dimension of the box domain only
+        (Can be extended to other dimensions)."""
 
         for region, (low, high) in self.bounds.items():
             if self.box.domain[2, 0] > low or self.box.domain[2, 1] < high:
@@ -37,6 +39,8 @@ class RegionClassifier:
                     )
 
     def classify_regions(self, z_values):
+        """Classify z-values into regions based on the provided bounds.
+        If on the boundary, assign to the lower region."""
         labels = np.full(len(z_values), "", dtype=object)
 
         for region, (low, high) in self.bounds.items():

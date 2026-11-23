@@ -42,3 +42,23 @@ def test_region_classifier():
         classifier_out_of_bounds = membranes.RegionClassifier(
             bounds=out_of_bounds, box=box
         )
+
+
+def test_classify_regions():
+    box = membranes.Box(domain=np.array([[0, 10], [0, 10], [0, 10]]))
+    bounds = {
+        "region1": (1, 3),
+        "region2": (3, 5),
+        "region3": (5, 7),
+        "region4": (7, 8),
+    }
+    classifier = membranes.RegionClassifier(bounds=bounds, box=box)
+
+    z_values = np.array([0.5, 2.0, 4.0, 6.0, 7.5, 9.0, 5.0])
+    expected_labels = np.array(
+        ["", "region1", "region2", "region3", "region4", "", "region2"], dtype=object
+    )
+
+    labels = classifier.classify_regions(z_values)
+
+    assert np.array_equal(labels, expected_labels)

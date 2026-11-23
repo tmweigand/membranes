@@ -27,23 +27,6 @@ def _check_input_path(file):
         raise FileNotFoundError(f"File not found: {file}")
 
 
-def read_trajectory_frames(file, config):
-
-    universe = mda.Universe(file, format="LAMMPSDUMP")
-    all_types = np.asarray(universe.atoms.types, dtype=int)
-
-    for ts in universe.trajectory:
-        timestep = ts.data.get("step", ts.frame)
-        data = {
-            "ids": universe.atoms.ids,
-            "positions": universe.atoms.positions,
-            "types": universe.atoms.types,
-            "box": ts.dimensions,
-        }
-
-    return data
-
-
 def get_frame_files(config):
     search_pattern = os.path.join(config.input_path, config.file_pattern)
     frame_files = glob.glob(search_pattern)
@@ -55,13 +38,10 @@ def get_frame_files(config):
 
 
 def _group_coordinates(atom_data):
-    """Replace x/y/z and xu/yu/zu columns with Nx3 arrays."""
+    """Replace x/y/z columns with Nx3 arrays."""
     grouped = dict(atom_data)
 
-    for name, keys in (
-        ("coords", ("x", "y", "z")),
-        ("coords_unwrapped", ("xu", "yu", "zu")),
-    ):
+    for name, keys in (("positions", ("x", "y", "z")),):
         if all(k in atom_data for k in keys):
             grouped[name] = np.column_stack([grouped.pop(k) for k in keys])
 
@@ -104,9 +84,6 @@ def _read_frame_files(file, config, extract_atom):
 
 
 def read_lammps_file(file, config, extract_atom=None):
-    if config.sim.input_mode == "trajectory":
-        atom_data = read_trajectory_frames(file, config)
-    elif config.sim.input_mode == "frame_files":
-        atom_data, domain, timestep = _read_frame_files(file, config, extract_atom)
+    atom_data, domain, timestep = _read_frame_files(file, config, extract_atom)
 
     return atom_data, domain, timestep
