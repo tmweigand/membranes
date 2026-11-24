@@ -28,15 +28,7 @@ class CoordinationWriter:
                 "# cutoff region mean_coordination_number "
                 "std_coordination_number observations\n"
             )
-            if "count" in summary:
-                summary = {self.stats.cutoffs: summary}
-            for key, s in summary.items():
-                if isinstance(key, tuple):
-                    cutoff, region = key
-                else:
-                    cutoff = key
-                    region = "all"
-
+            for (cutoff, region), s in summary.items():
                 f.write(
                     f"{cutoff:.2f} {region} "
                     f"{s['mean']:.8f} {s['std']:.8f} {s['count']:d}\n"
@@ -44,18 +36,13 @@ class CoordinationWriter:
 
     def _write_distributions(self):
         distributions = self.stats.distribution()
+        for (cutoff, region), distribution in distributions.items():
+            label = f"{cutoff:.2f}_{region}"
 
-        if distributions and "count" in next(iter(distributions.values())):
-            distributions = {self.stats.cutoffs: distributions}
-
-        for key, distribution in distributions.items():
-            if isinstance(key, tuple):
-                cutoff, region = key
-                label = f"{cutoff:.2f}_{region}"
-            else:
-                label = f"{key:.2f}"
-
-            path = os.path.join(self.out_dir, f"coordination_distribution_{label}.dat")
+            path = os.path.join(
+                self.out_dir,
+                f"coordination_distribution_{label}.dat",
+            )
 
             with open(path, "w", encoding="utf-8") as f:
                 f.write("# coordination_number probability frequency\n")

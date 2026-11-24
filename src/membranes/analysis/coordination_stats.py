@@ -8,53 +8,55 @@ class CoordinationStats(CoordinationNumber):
     """Accumulates coordination-number observations per (cutoff, region)."""
 
     def __init__(self, cutoffs, regions: RegionClassifier | None = None):
-        super().__init__(cutoffs, regions)
+        super().__init__(cutoffs)
         self.counter = 0
+        self.regions = regions
         if isinstance(self.cutoffs, (float, int)):
-            if self.regions is None:
-                self._data = {
-                    "sum": 0,
-                    "sum_sq": 0.0,
-                    "count": 0,
-                    "frequency": Counter(),
-                }
-            else:
-                self._data = {
-                    region: {
-                        "sum": 0,
-                        "sum_sq": 0.0,
-                        "count": 0,
-                        "frequency": Counter(),
-                    }
-                    for region in self.regions.bounds
-                }
+            cutoffs = [self.cutoffs]
         else:
-            if self.regions is None:
-                self._data = {
-                    i: {"sum": 0, "sum_sq": 0.0, "count": 0, "frequency": Counter()}
-                    for i in self.cutoffs
-                }
-            else:
-                self._data = {
-                    (cutoff, region): {
-                        "sum": 0,
-                        "sum_sq": 0.0,
-                        "count": 0,
-                        "frequency": Counter(),
-                    }
-                    for cutoff in self.cutoffs
-                    for region in self.regions.bounds
-                }
+            cutoffs = self.cutoffs
 
-    def update(self, positions):
+        if self.regions is None:
+            region_names = ["all"]
+        else:
+            region_names = list(self.regions.bounds) + ["unassigned"]
 
+        self._data = {
+            (cutoff, region): {
+                "sum": 0,
+                "sum_sq": 0.0,
+                "count": 0,
+                "frequency": Counter(),
+            }
+            for cutoff in cutoffs
+            for region in region_names
+        }
+
+    def update(self, positions, atom_ids):
+
+        atom_ids = np.asarray(atom_ids)
         values = self.get_coordination_numbers(positions)
-        # print(values.keys())
-        if isinstance(self.cutoffs, (float, int)) and self.regions is None:
-            self._update(self._data, values)
+
+        if self.regions is None:
+            region_labels = np.full(len(positions), "all", dtype=object)
         else:
-            for key in values.keys():
-                self._update(self._data[key], values[key])
+            region_labels = self.regions.classify_regions(positions[:, 2])
+
+        for cutoff, cn_values in values.items():
+            for region in self._data:
+                current_cutoff, region_name = region
+                if current_cutoff != cutoff:
+                    continue
+                if region_name == "unassigned":
+                    region_mask = ~np.isin(region_labels, list(self.regions.bounds))
+                else:
+                    region_mask = region_labels == region_name
+
+                region_atom_ids = atom_ids[region_mask]
+                region_cn_values = cn_values[region_mask]
+
+                self._update(self._data[region], region_cn_values)
+        self.counter += 1
 
     def _update(self, data, values):
         data["sum"] += int(values.sum())
@@ -63,12 +65,7 @@ class CoordinationStats(CoordinationNumber):
         data["frequency"].update(values.tolist())
 
     def summary(self):
-        if isinstance(self.cutoffs, (float, int)) and self.regions is None:
-            return self._summary(self._data)
-        results = {}
-        for key, data in self._data.items():
-            results[key] = self._summary(data)
-        return results
+        return {key: self._summary(data) for key, data in self._data.items()}
 
     def _summary(self, data):
         count = data["count"]
@@ -79,16 +76,7 @@ class CoordinationStats(CoordinationNumber):
         return {"count": count, "mean": mean, "std": float(np.sqrt(variance))}
 
     def distribution(self):
-
-        if isinstance(self.cutoffs, (float, int)) and self.regions is None:
-            return self._distribution(self._data)
-
-        results = {}
-
-        for key, data in self._data.items():
-            results[key] = self._distribution(data)
-
-        return results
+        return {key: self._distribution(data) for key, data in self._data.items()}
 
     def _distribution(self, data):
 

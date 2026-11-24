@@ -12,3 +12,6 @@ Details of the arguments:
 4. If region-based analysis needs to be performed, the region definitions and bounds are selected automatically based on `--simtype`.
    - For `water_box`, the entire simulation box (`whole_box`) is considered.
    - For `vickers_membrane`, the feed, membrane, and permeate regions are considered. Their bounds can be modified in `sim_types`.
+
+## Xu Data is extracted from:
+https://github.com/hxu97/TransportPressure/tree/main

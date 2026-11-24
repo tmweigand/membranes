@@ -3,6 +3,7 @@
 import argparse
 import numpy as np
 import membranes
+import time
 
 ANGSTROM_PER_NM = 10.0
 
@@ -50,43 +51,49 @@ def main():
         args.output,
         args.simtype,
     )
-    frames_processed = 0
-    stats = None
+    cutoff = np.arange(
+        config.sim.cutoffs[0],
+        config.sim.cutoffs[1] + config.sim.cutoff_step / 2,
+        config.sim.cutoff_step,
+    )
+
+    region_classifier = membranes.RegionClassifier(
+        bounds=config.sim.region_bounds, box=membranes.Box(domain=config.sim.box)
+    )
+    stats = membranes.analysis.CoordinationStats(
+        cutoffs=cutoff, regions=region_classifier
+    )
     for input_file in config.get_input_files():
-        oxygen_data, domain, timestep = membranes.io.read_lammps_file(
+        start = time.perf_counter()
+
+        oxygen_data, _, timestep = membranes.io.read_lammps_file(
             file=input_file,
             config=config,
             extract_atom=config.sim.oxygen_type,
         )
+        read_time = time.perf_counter() - start
+
         validate_frame(oxygen_data, input_file, config.sim.oxygen_type)
 
-        # analysis.get_coordination_numbers(oxygen_data)
+        start = time.perf_counter()
 
-        cutoff = np.arange(
-            config.sim.cutoffs[0],
-            config.sim.cutoffs[1] + config.sim.cutoff_step / 2,
-            config.sim.cutoff_step,
-        )
-        if stats is None:
-
-            region_classifier = membranes.RegionClassifier(
-                bounds=config.sim.region_bounds, box=membranes.Box(domain=domain)
-            )
-            stats = membranes.analysis.CoordinationStats(
-                cutoffs=cutoff, regions=region_classifier
-            )
-        positions = oxygen_data["positions"]
-        stats.update(positions)
+        stats.update(oxygen_data["positions"], oxygen_data["id"])
+        analysis_time = time.perf_counter() - start
 
         print(
-            f"Frame {frames_processed} | timestep {timestep} | "
+            f"Frame {stats.counter} | "
+            f"Read: {read_time:.3f} s | "
+            f"Analysis + stats: {analysis_time:.3f} s"
+        )
+
+        print(
+            f"Frame {stats.counter} | timestep {timestep} | "
             f"oxygen atoms {len(oxygen_data['positions'])} | "
         )
-        frames_processed += 1
     membranes.analysis.CoordinationWriter(
         in_dir=args.input,
         out_dir=args.output,
-        frames_processed=frames_processed,
+        frames_processed=stats.counter,
         stats=stats,
     ).write_outputs()
 
