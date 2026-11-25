@@ -1,94 +1,232 @@
-from .coordination_stats import CoordinationStats
 import os
+
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.ticker import MaxNLocator
+
+from .coordination_stats import CoordinationStats
+
+RC_PARAMS = {
+    "font.size": 11,
+    "axes.titlesize": 12,
+    "axes.labelsize": 11,
+    "legend.fontsize": 9,
+    "legend.frameon": False,
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+    "axes.grid": True,
+    "grid.alpha": 0.25,
+    "grid.linewidth": 0.6,
+    "figure.constrained_layout.use": True,
+    "savefig.dpi": 300,
+    "savefig.bbox": "tight",
+}
 
 
 class CoordinationWriter:
-    """Writes summary, distributions, and README for a finished analysis."""
+    """Writes summary, distributions, README, and plots for a finished analysis."""
 
     def __init__(
         self,
         in_dir,
         out_dir,
-        frames_processed,
         stats: CoordinationStats,
+        per_file_distributions=True,
     ):
         self.stats = stats
-        self.frames_processed = frames_processed
+        self.frames_processed = stats.counter
         self.in_dir = in_dir
         self.out_dir = out_dir
+        self.per_file_distributions = per_file_distributions
+        self.plots_dir = os.path.join(out_dir, "plots")
 
-        os.makedirs(self.out_dir, exist_ok=True)
+        os.makedirs(self.plots_dir, exist_ok=True)
 
-    def _write_summary(self):
-        path = os.path.join(self.out_dir, "coordination_summary.dat")
+    # ------------------------------------------------------------------ helpers
+
+    def _region_names(self):
+        if self.stats.regions is None:
+            return ["all"]
+        return list(self.stats.regions.bounds)
+
+    def _cutoff_list(self):
+        return np.atleast_1d(self.stats.cutoffs).tolist()
+
+    def _colors(self):
+        """One fixed colour per region so every figure uses the same mapping."""
+        cmap = plt.get_cmap("tab10")
+        return {r: cmap(i % 10) for i, r in enumerate(self._region_names())}
+
+    @staticmethod
+    def _label(cutoff, region):
+        return f"{cutoff:.2f}_{region}".replace("/", "_").replace(" ", "_")
+
+    @staticmethod
+    def _save(fig, path):
+        fig.savefig(path)
+        plt.close(fig)
+
+    def _plot_summary(self):
+        """Mean coordination number vs cutoff, one line per region.
+
+        The shaded band is +-1 SD of the pooled distribution (the spread of
+        individual atoms), not an uncertainty on the mean.
+        """
         summary = self.stats.summary()
+        colors = self._colors()
+        cutoffs = self._cutoff_list()
 
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(
-                "# cutoff region mean_coordination_number "
-                "std_coordination_number observations\n"
-            )
-            for (cutoff, region), s in summary.items():
-                f.write(
-                    f"{cutoff:.2f} {region} "
-                    f"{s['mean']:.8f} {s['std']:.8f} {s['count']:d}\n"
+        with plt.rc_context(RC_PARAMS):
+            fig, ax = plt.subplots(figsize=(6, 4.2))
+
+            for region in self._region_names():
+                pts = [
+                    (c, summary[(c, region)])
+                    for c in cutoffs
+                    if summary[(c, region)]["count"]
+                ]
+                if not pts:
+                    continue
+                x = np.array([c for c, _ in pts])
+                mean = np.array([s["mean"] for _, s in pts])
+                std = np.array([s["std"] for _, s in pts])
+
+                ax.plot(
+                    x,
+                    mean,
+                    marker="o",
+                    ms=5,
+                    lw=1.8,
+                    color=colors[region],
+                    label=region,
+                )
+                ax.fill_between(
+                    x, mean - std, mean + std, color=colors[region], alpha=0.15, lw=0
                 )
 
-    def _write_distributions(self):
+            ax.set_xlabel("Cutoff (Å)")
+            ax.set_ylabel("Mean coordination number")
+            ax.set_title("Coordination number vs cutoff")
+            ax.set_ylim(bottom=0)
+            ax.legend(title="Region")
+            ax.text(
+                0.99,
+                0.01,
+                "shaded: ±1 SD of distribution",
+                transform=ax.transAxes,
+                ha="right",
+                va="bottom",
+                fontsize=8,
+                color="0.4",
+            )
+            self._save(fig, os.path.join(self.plots_dir, "coordination_summary.png"))
+
+    def _plot_region(self):
+        """One figure per cutoff with all regions overlaid on the same axes."""
+        plot_dir = self.plots_dir + "/distributions"
+        os.makedirs(plot_dir, exist_ok=True)
+
         distributions = self.stats.distribution()
-        for (cutoff, region), distribution in distributions.items():
-            label = f"{cutoff:.2f}_{region}"
+        summary = self.stats.summary()
+        colors = self._colors()
 
-            path = os.path.join(
-                self.out_dir,
-                f"coordination_distribution_{label}.dat",
-            )
+        with plt.rc_context(RC_PARAMS):
+            for cutoff in self._cutoff_list():
+                fig, ax = plt.subplots(figsize=(6.2, 4.2))
+                drawn = False
 
-            with open(path, "w", encoding="utf-8") as f:
-                f.write("# coordination_number probability frequency\n")
+                for region in self._region_names():
+                    dist = distributions[(cutoff, region)]
+                    if not dist:
+                        continue
+                    s = summary[(cutoff, region)]
+                    cn = np.array(list(dist))
+                    p = np.array([item["probability"] for item in dist.values()])
 
-                for cn, item in distribution.items():
-                    f.write(
-                        f"{cn:d} {item['probability']:.12g} " f"{item['count']:d}\n"
+                    ax.fill_between(cn, p, color=colors[region], alpha=0.15, lw=0)
+                    ax.plot(
+                        cn,
+                        p,
+                        marker="o",
+                        ms=4,
+                        lw=1.8,
+                        color=colors[region],
+                        label=(
+                            f"{region}  (mean={s['mean']:.2f}, "
+                            f"SD={s['std']:.2f}, N={s['count']:,})"
+                        ),
                     )
+                    ax.axvline(s["mean"], color=colors[region], ls="--", lw=1.1)
+                    drawn = True
 
-    def _write_readme(self):
-        path = os.path.join(self.out_dir, "README.txt")
-        cutoffs = (
-            f"{self.stats.cutoffs:.2f}"
-            if isinstance(self.stats.cutoffs, (float, int))
-            else ", ".join(f"{x:.2f}" for x in self.stats.cutoffs)
-        )
-        with open(path, "w", encoding="utf-8") as f:
-            f.write("Water oxygen coordination analysis\n")
-            f.write("==================================\n\n")
-            f.write(f"Input data: {self.in_dir}\n")
-            f.write(f"Frames processed: {self.frames_processed}\n")
-            f.write("Coordinate and box-length units: Angstrom\n")
-            f.write(f"Cutoffs (A): {cutoffs}\n\n")
-            if self.stats.regions is not None:
-                f.write("Region definitions (z_min, z_max), Angstrom:\n")
-                for region, limits in self.stats.regions.bounds.items():
-                    f.write(f"  {region}: {limits}\n")
-            f.write("\nOutputs\n-------\n")
-            f.write(
-                "coordination_summary.dat: observations, mean and standard "
-                "deviation for each cutoff and region.\n"
-            )
-            f.write(
-                "coordination_distribution_<cutoff>_<region>.dat: "
-                "coordination number, frequency and probability.\n"
-            )
-            f.write(
-                "\nNotes\n-----\n"
-                "Standard deviations are population standard deviations over "
-                "all oxygen observations pooled across frames. Consecutive "
-                "frames are correlated, so this is not an estimate from "
-                "independent samples.\n"
-            )
-            f.write(f"\nAll outputs are stored in: {os.path.abspath(self.out_dir)}\n")
+                if not drawn:
+                    plt.close(fig)
+                    continue
 
-    def write_outputs(self):
-        self._write_summary()
-        self._write_distributions()
-        self._write_readme()
+                ax.set_title(f"Coordination number by region, cutoff {cutoff:.2f} Å")
+                ax.set_xlabel("Coordination number")
+                ax.set_ylabel("Probability")
+                ax.set_ylim(bottom=0)
+                ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+                ax.legend(title="Region (dashed: mean)")
+
+                self._save(
+                    fig,
+                    os.path.join(
+                        plot_dir,
+                        f"coordination_regions_{cutoff:.2f}.png",
+                    ),
+                )
+
+    def _plot_distributions(self):
+        """Individual (cutoff, region) histograms with mean/SD annotation."""
+        plot_dir = self.plots_dir + "/individual_distributions"
+        os.makedirs(plot_dir, exist_ok=True)
+
+        distributions = self.stats.distribution()
+        summary = self.stats.summary()
+        colors = self._colors()
+
+        with plt.rc_context(RC_PARAMS):
+            for (cutoff, region), dist in distributions.items():
+                if region == "unassigned" or not dist:
+                    continue
+
+                s = summary[(cutoff, region)]
+                cn = np.array(list(dist))
+                p = np.array([item["probability"] for item in dist.values()])
+
+                fig, ax = plt.subplots(figsize=(5, 3.6))
+                ax.bar(cn, p, width=0.8, color=colors[region], alpha=0.85)
+                ax.axvline(s["mean"], color="k", ls="--", lw=1.2)
+                ax.axvspan(
+                    s["mean"] - s["std"], s["mean"] + s["std"], color="k", alpha=0.07
+                )
+
+                ax.set_title(f"Cutoff {cutoff:.2f} Å, region {region}")
+                ax.set_xlabel("Coordination number")
+                ax.set_ylabel("Probability")
+                ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+                ax.text(
+                    0.97,
+                    0.95,
+                    f"mean = {s['mean']:.2f}\nSD = {s['std']:.2f}\nN = {s['count']:,}",
+                    transform=ax.transAxes,
+                    ha="right",
+                    va="top",
+                    fontsize=9,
+                    bbox=dict(boxstyle="round", fc="white", ec="0.8"),
+                )
+                self._save(
+                    fig,
+                    os.path.join(
+                        plot_dir,
+                        f"coordination_distribution_{self._label(cutoff, region)}.png",
+                    ),
+                )
+
+    def plots(self):
+        self._plot_summary()
+        self._plot_region()
+        if self.per_file_distributions:
+            self._plot_distributions()

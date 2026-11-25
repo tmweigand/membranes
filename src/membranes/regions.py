@@ -49,3 +49,9 @@ class RegionClassifier:
             labels[mask] = region
 
         return labels
+
+
+def make_region_bounds(start, end, n_bins, name="default"):
+    """Divide the a range into n_bins equal slabs"""
+    edges = np.linspace(start, end, n_bins + 1)
+    return {f"{name}_{i}": (edges[i], edges[i + 1]) for i in range(n_bins)}
