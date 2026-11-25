@@ -1,0 +1,79 @@
+# LAMMPS input file for water models.
+
+units           real
+atom_style      full
+boundary        p p p
+newton          off
+
+log             ${output}/log.lammps
+read_data       ${data}
+
+mass            1 ${mass_o}
+mass            2 ${mass_h}
+
+# The pair style is selected in water.py.
+if "${forcefield} == riley" then &
+    "pair_style lj/charmm/coul/long 7.0 9.0" &
+else &
+    "pair_style lj/cut/coul/long 9.0"
+
+# forcefield-specific mixing and intramolecular scaling, switched on for riley's forcefield.
+if "${forcefield} == riley" then "pair_modify mix sixthpower" "special_bonds charmm"
+
+kspace_style    pppm 1.0e-4
+kspace_modify   diff ad
+
+bond_style      harmonic
+angle_style     harmonic
+
+pair_coeff      1 1 ${epsilon_o} ${sigma_o}
+pair_coeff      2 2 ${epsilon_h} ${sigma_h}
+
+bond_coeff      1 ${bond_k} ${bond_r0}
+angle_coeff     1 ${angle_k} ${angle_theta}
+
+dielectric      1.0
+neighbor        4.0 bin
+neigh_modify    delay 0 every 1 check yes
+
+timestep        1.0
+
+thermo          1000
+thermo_style    custom step temp press density pe ke etotal
+
+# Initial energy minimization and velocity assignment.
+min_style       cg
+minimize        1.0e-6 1.0e-8 1000 10000
+
+velocity        all create ${temperature} 4928459 mom yes rot yes dist gaussian
+
+# Record thermodynamic quantities throughout equilibration and production.
+variable        temp_now equal temp
+variable        press_now equal press
+variable        density_now equal density
+variable        pe_now equal pe
+variable        ke_now equal ke
+variable        etotal_now equal etotal
+
+fix             thermo_out all ave/time 100 10 1000 v_temp_now v_press_now v_density_now v_pe_now v_ke_now v_etotal_now file ${output}/thermo.dat
+
+# NPT equilibration
+fix             npt all npt temp ${temperature} ${temperature} 100.0 iso ${pressure_atm} ${pressure_atm} 1000.0
+run             ${equil_steps}
+
+# Save the equilibrated configuration before production.
+write_data      ${output}/water_equilibrated.data
+
+# One trajectory file per saved frame. The filename contains the timestep.
+dump            trajectory all custom ${dump_frequency} ${output}/traj/traj.* id mol type x y z xu yu zu ix iy iz
+dump_modify     trajectory sort id
+
+run             ${production_steps}
+
+undump          trajectory
+unfix           npt
+unfix           thermo_out
+
+# Write the final configuration and restart.
+write_data      ${output}/water_final.data
+write_restart   ${output}/water_final.restart
