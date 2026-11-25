@@ -1,5 +1,3 @@
-from ..regions import RegionClassifier
-
 import numpy as np
 from MDAnalysis.lib.distances import self_capped_distance
 

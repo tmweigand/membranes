@@ -32,9 +32,7 @@ class CoordinationStats(CoordinationNumber):
             for region in region_names
         }
 
-    def update(self, positions, atom_ids):
-
-        atom_ids = np.asarray(atom_ids)
+    def update(self, positions, atom_ids=None):
         values = self.get_coordination_numbers(positions)
 
         if self.regions is None:
@@ -52,7 +50,6 @@ class CoordinationStats(CoordinationNumber):
                 else:
                     region_mask = region_labels == region_name
 
-                region_atom_ids = atom_ids[region_mask]
                 region_cn_values = cn_values[region_mask]
 
                 self._update(self._data[region], region_cn_values)
