@@ -65,7 +65,7 @@ run             ${equil_steps}
 write_data      ${output}/water_equilibrated.data
 
 # One trajectory file per saved frame. The filename contains the timestep.
-dump            trajectory all custom ${dump_frequency} ${output}/traj.* id mol type x y z xu yu zu ix iy iz
+dump            trajectory all custom ${dump_frequency} ${output}/traj/traj.* id mol type x y z xu yu zu ix iy iz
 dump_modify     trajectory sort id
 
 run             ${production_steps}
